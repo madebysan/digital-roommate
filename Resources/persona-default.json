@@ -1,0 +1,218 @@
+{
+  "name": "Alex Rivera",
+  "age": 34,
+  "profession": "Marketing Manager",
+  "interests": ["cooking", "hiking", "photography", "home improvement", "personal finance"],
+  "searchTopics": [
+    {
+      "category": "cooking",
+      "templates": [
+        "best {item} for beginners",
+        "how to {item} at home",
+        "{item} recipes easy",
+        "{item} tips for home cooks",
+        "best {item} under $50"
+      ],
+      "items": [
+        "sourdough bread", "cast iron skillet", "meal prep", "air fryer recipes",
+        "homemade pasta", "fermented vegetables", "wok cooking", "dutch oven",
+        "knife sharpening", "bread baking", "slow cooker", "instant pot"
+      ]
+    },
+    {
+      "category": "hiking",
+      "templates": [
+        "best {item} for day hiking",
+        "{item} reviews",
+        "{item} comparison",
+        "how to choose {item}",
+        "best budget {item}"
+      ],
+      "items": [
+        "hiking boots", "trekking poles", "daypack", "water filter",
+        "trail running shoes", "hiking socks", "rain jacket", "headlamp",
+        "hiking GPS", "camping stove", "sleeping bag", "tent"
+      ]
+    },
+    {
+      "category": "photography",
+      "templates": [
+        "best {item} for beginners",
+        "{item} tutorial",
+        "{item} settings guide",
+        "how to {item}",
+        "{item} tips and tricks"
+      ],
+      "items": [
+        "landscape photography", "portrait lighting", "photo editing software",
+        "mirrorless camera", "tripod", "lens filter", "lightroom presets",
+        "golden hour photography", "street photography", "macro lens"
+      ]
+    },
+    {
+      "category": "home improvement",
+      "templates": [
+        "how to {item} DIY",
+        "best {item} for home",
+        "{item} cost estimate",
+        "{item} before and after",
+        "DIY {item} tutorial"
+      ],
+      "items": [
+        "paint kitchen cabinets", "install floating shelves", "fix leaky faucet",
+        "replace light fixture", "organize garage", "build raised garden bed",
+        "install smart thermostat", "refinish hardwood floors", "tile backsplash"
+      ]
+    },
+    {
+      "category": "personal finance",
+      "templates": [
+        "best {item}",
+        "{item} for beginners",
+        "how to start {item}",
+        "{item} comparison",
+        "{item} advice reddit"
+      ],
+      "items": [
+        "high yield savings account", "index fund investing", "Roth IRA",
+        "budgeting app", "credit card rewards", "retirement planning",
+        "emergency fund", "tax deductions", "side hustle ideas"
+      ]
+    }
+  ],
+  "shoppingCategories": [
+    {
+      "name": "Kitchen & Cooking",
+      "searchTerms": [
+        "cast iron skillet lodge", "chef knife set", "cutting board walnut",
+        "air fryer", "instant pot accessories", "spice rack organizer",
+        "kitchen scale digital", "dutch oven enamel", "silicone baking mat",
+        "food storage containers glass"
+      ],
+      "productUrls": [
+        "https://www.amazon.com/dp/B00006JSUA",
+        "https://www.amazon.com/dp/B000FRYD0M",
+        "https://www.amazon.com/dp/B0B8RMKBTG"
+      ]
+    },
+    {
+      "name": "Outdoor & Hiking",
+      "searchTerms": [
+        "hiking daypack 30L", "merrell hiking boots men", "trekking poles carbon fiber",
+        "water bottle insulated", "trail mix bulk", "hiking socks merino wool",
+        "portable water filter", "headlamp rechargeable", "camping hammock"
+      ],
+      "productUrls": [
+        "https://www.amazon.com/dp/B07KYHB8LM",
+        "https://www.amazon.com/dp/B078WGF1GQ"
+      ]
+    },
+    {
+      "name": "Photography",
+      "searchTerms": [
+        "camera bag backpack", "SD card 128GB", "lens cleaning kit",
+        "tripod lightweight travel", "camera strap", "external hard drive 2TB",
+        "photo printer", "memory card reader USB-C"
+      ],
+      "productUrls": []
+    },
+    {
+      "name": "Home & Office",
+      "searchTerms": [
+        "desk organizer", "LED desk lamp", "monitor stand", "ergonomic mouse",
+        "whiteboard markers", "cable management kit", "standing desk converter",
+        "noise cancelling headphones", "air purifier HEPA"
+      ],
+      "productUrls": []
+    }
+  ],
+  "videoInterests": [
+    {
+      "topic": "cooking tutorials",
+      "channelUrls": [
+        "https://www.youtube.com/@joshuaweissman",
+        "https://www.youtube.com/@baborish",
+        "https://www.youtube.com/@AdamRagusea",
+        "https://www.youtube.com/@InternetShaquille"
+      ],
+      "videoUrls": [],
+      "searchQueries": [
+        "easy weeknight dinners", "sourdough bread tutorial",
+        "meal prep ideas for the week", "cast iron skillet seasoning",
+        "homemade pasta from scratch", "air fryer recipes beginners",
+        "one pot meals", "budget cooking tips"
+      ]
+    },
+    {
+      "topic": "hiking and outdoors",
+      "channelUrls": [
+        "https://www.youtube.com/@DarwinOnTheTrail",
+        "https://www.youtube.com/@HomeMadeWanderlust"
+      ],
+      "videoUrls": [],
+      "searchQueries": [
+        "best day hikes near me", "hiking gear essentials beginner",
+        "how to read a trail map", "backpacking tips first time",
+        "best national parks to visit", "trail running for beginners"
+      ]
+    },
+    {
+      "topic": "photography tips",
+      "channelUrls": [
+        "https://www.youtube.com/@TonyNorthrup",
+        "https://www.youtube.com/@PeterMcKinnon"
+      ],
+      "videoUrls": [],
+      "searchQueries": [
+        "photography composition tips", "lightroom editing tutorial",
+        "landscape photography settings", "portrait photography natural light",
+        "street photography tips", "best photo editing software free"
+      ]
+    },
+    {
+      "topic": "home improvement DIY",
+      "channelUrls": [
+        "https://www.youtube.com/@ThisOldHouse",
+        "https://www.youtube.com/@HomeRenoVisionDIY"
+      ],
+      "videoUrls": [],
+      "searchQueries": [
+        "how to paint a room like a pro", "DIY floating shelves easy",
+        "fix leaky faucet tutorial", "install light fixture ceiling",
+        "organize small garage", "smart home setup beginner"
+      ]
+    },
+    {
+      "topic": "personal finance",
+      "channelUrls": [
+        "https://www.youtube.com/@BenFelixCSI",
+        "https://www.youtube.com/@ThePlainBagel"
+      ],
+      "videoUrls": [],
+      "searchQueries": [
+        "index fund investing for beginners", "how to budget effectively",
+        "Roth IRA explained", "best high yield savings accounts",
+        "how to start investing with little money"
+      ]
+    }
+  ],
+  "newsSites": [
+    { "name": "Ars Technica", "url": "https://arstechnica.com", "category": "tech" },
+    { "name": "The Verge", "url": "https://www.theverge.com", "category": "tech" },
+    { "name": "NPR", "url": "https://www.npr.org", "category": "news" },
+    { "name": "Reuters", "url": "https://www.reuters.com", "category": "news" },
+    { "name": "BBC News", "url": "https://www.bbc.com/news", "category": "news" },
+    { "name": "Serious Eats", "url": "https://www.seriouseats.com", "category": "hobby" },
+    { "name": "AllTrails Blog", "url": "https://www.alltrails.com/blog", "category": "hobby" },
+    { "name": "PetaPixel", "url": "https://petapixel.com", "category": "hobby" },
+    { "name": "HubSpot Blog", "url": "https://blog.hubspot.com/marketing", "category": "professional" },
+    { "name": "Marketing Brew", "url": "https://www.marketingbrew.com", "category": "professional" }
+  ],
+  "activeHours": {
+    "morningWeight": 0.6,
+    "afternoonWeight": 0.8,
+    "eveningWeight": 0.9,
+    "lateNightWeight": 0.3,
+    "vampireWeight": 0.15
+  }
+}
