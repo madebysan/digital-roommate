@@ -7,3 +7,6 @@ DerivedData/
 Package.resolved
 .env
 .env.*
+dist/
+*.dmg
+*.app
