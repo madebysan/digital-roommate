@@ -42,7 +42,11 @@ class ModuleRegistry {
 
         ActivityLog.shared.log(
             module: id,
-            action: module.isEnabled ? "Enabled" : "Disabled"
+            action: module.isEnabled ? "Module enabled" : "Module disabled",
+            metadata: [
+                "moduleName": module.displayName,
+                "enabledCount": "\(enabledCount)/\(allModules.count)",
+            ]
         )
     }
 

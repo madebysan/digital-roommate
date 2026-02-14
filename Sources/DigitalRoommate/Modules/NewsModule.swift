@@ -13,23 +13,41 @@ class NewsModule: BrowsingModule {
     private(set) var actionsCompleted = 0
     private var shouldStop = false
 
+    private var settings: AppSettings { SettingsManager.shared.current }
+
     func execute(webView: WebViewInstance) async {
         isActive = true
         shouldStop = false
         actionsCompleted = 0
 
-        let persona = Persona.loadDefault()
-        guard !persona.newsSites.isEmpty else {
+        // Build site list from settings (user-editable) with persona as fallback
+        let siteUrls = settings.browsingSites
+        guard !siteUrls.isEmpty else {
             isActive = false
             return
         }
 
-        // Pick 1-2 sites to visit this session
-        let sitesToVisit = min(Int.random(in: 1...2), persona.newsSites.count)
-        let sites = persona.newsSites.shuffled().prefix(sitesToVisit)
+        // Convert URLs to NewsSite structs (derive name from hostname)
+        let allSites: [Persona.NewsSite] = siteUrls.compactMap { urlString in
+            guard let url = URL(string: urlString), let host = url.host else { return nil }
+            let name = host.replacingOccurrences(of: "www.", with: "").capitalized
+            return Persona.NewsSite(name: name, url: urlString, category: "custom")
+        }
+
+        // Pick sites to visit this session (count from settings)
+        let maxSites = settings.newsSitesPerSession
+        let sitesToVisit = min(Int.random(in: 1...max(1, maxSites)), allSites.count)
+        let sites = allSites.shuffled().prefix(sitesToVisit)
 
         for site in sites {
             guard !shouldStop else { break }
+            // Skip blocked domains
+            if settings.isDomainBlocked(site.url) {
+                ActivityLog.shared.log(module: id, action: "Skipped blocked site", metadata: [
+                    "siteName": site.name, "siteUrl": site.url,
+                ])
+                continue
+            }
             await browseSite(webView: webView, site: site)
         }
 
@@ -46,7 +64,11 @@ class NewsModule: BrowsingModule {
     /// Visit a news site: load homepage, read articles, follow links
     private func browseSite(webView: WebViewInstance, site: Persona.NewsSite) async {
         statusText = "Reading: \(site.name)"
-        ActivityLog.shared.log(module: id, action: "Visiting \(site.name) (\(site.url))")
+        ActivityLog.shared.log(module: id, action: "Visiting news site", metadata: [
+            "siteName": site.name,
+            "siteUrl": site.url,
+            "category": site.category,
+        ])
 
         // Load the homepage
         let loaded = await webView.loadURL(site.url)
@@ -58,8 +80,9 @@ class NewsModule: BrowsingModule {
         await scrollPage(webView: webView, steps: Int.random(in: 3...6))
         actionsCompleted += 1
 
-        // Click on 1-3 articles
-        let articlesToRead = Int.random(in: 1...3)
+        // Click on articles (count from settings)
+        let maxArticles = settings.newsArticlesPerSession
+        let articlesToRead = Int.random(in: 1...max(1, maxArticles))
         for i in 0..<articlesToRead {
             guard !shouldStop else { return }
 
@@ -98,28 +121,35 @@ class NewsModule: BrowsingModule {
 
                 if (unique.length > \(i)) {
                     var idx = Math.min(\(i) + Math.floor(Math.random() * 3), unique.length - 1);
+                    var href = unique[idx].href;
                     unique[idx].click();
-                    return 'clicked';
+                    return href;
                 }
                 return 'none';
             })()
             """
 
             let result = await webView.executeJS(clickJS)
-            if result == "clicked" {
+            if let articleUrl = result, articleUrl != "none" {
                 // Wait for article to load
                 await webView.wait(seconds: Double.random(in: 2...4))
 
                 let title = await webView.pageTitle()
+                let currentUrl = await webView.executeJS("window.location.href") ?? articleUrl
                 statusText = "Reading: \(String(title.prefix(40)))"
-                ActivityLog.shared.log(module: id, action: "Reading: \(title)")
+                ActivityLog.shared.log(module: id, action: "Reading article", metadata: [
+                    "articleTitle": title,
+                    "articleUrl": currentUrl,
+                    "siteName": site.name,
+                    "articleIndex": "\(i + 1)/\(articlesToRead)",
+                ])
 
                 // Read the article (scroll at reading speed)
                 await readArticle(webView: webView)
                 actionsCompleted += 1
 
-                // 30% chance: follow a link from the article (1 hop)
-                if Double.random(in: 0...1) < 0.3 && !shouldStop {
+                // 30% chance: follow a link from the article (if enabled)
+                if settings.newsFollowRelatedLinks && Double.random(in: 0...1) < 0.3 && !shouldStop {
                     await followRelatedLink(webView: webView)
                 }
 
@@ -166,19 +196,25 @@ class NewsModule: BrowsingModule {
 
             if (valid.length > 0) {
                 var idx = Math.floor(Math.random() * Math.min(valid.length, 5));
+                var href = valid[idx].href;
                 valid[idx].click();
-                return 'clicked';
+                return href;
             }
             return 'none';
         })()
         """
 
         let result = await webView.executeJS(clickJS)
-        if result == "clicked" {
+        if let linkUrl = result, linkUrl != "none" {
             await webView.wait(seconds: Double.random(in: 2...4))
 
             let title = await webView.pageTitle()
-            ActivityLog.shared.log(module: id, action: "Followed link: \(title)")
+            let currentUrl = await webView.executeJS("window.location.href") ?? linkUrl
+            ActivityLog.shared.log(module: id, action: "Followed related link", metadata: [
+                "pageTitle": title,
+                "url": currentUrl,
+                "fromUrl": linkUrl,
+            ])
 
             // Briefly scroll through the linked page
             await scrollPage(webView: webView, steps: Int.random(in: 2...4))

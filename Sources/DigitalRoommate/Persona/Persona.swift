@@ -3,6 +3,7 @@ import Foundation
 // The fake "roommate" persona — defines what kind of person the traffic
 // should look like. Includes interests, profession, search patterns,
 // shopping preferences, video tastes, and news sources.
+// Multiple personas can be stored in the personas/ directory.
 struct Persona: Codable {
     let name: String
     let age: Int
@@ -52,30 +53,123 @@ struct Persona: Codable {
     }
 }
 
-// MARK: - Loading
+// MARK: - Multi-Persona Storage
 
 extension Persona {
-    /// Load the default persona from the bundled JSON resource
-    static func loadDefault() -> Persona {
-        // Try to load from Application Support first (user-edited version)
-        let appSupport = StateStore.appSupportDirectory
-        let customPath = appSupport.appendingPathComponent("persona.json")
 
-        if FileManager.default.fileExists(atPath: customPath.path),
-           let data = try? Data(contentsOf: customPath),
+    /// Directory where all persona files are stored
+    static var personasDirectory: URL {
+        let dir = StateStore.appSupportDirectory.appendingPathComponent("personas")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    /// List all available persona names (derived from filenames, sorted)
+    static func listAll() -> [String] {
+        let dir = personasDirectory
+        guard let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else {
+            return []
+        }
+        return files
+            .filter { $0.pathExtension == "json" }
+            .map { $0.deletingPathExtension().lastPathComponent }
+            .sorted()
+    }
+
+    /// Load a specific persona by name
+    static func load(named name: String) -> Persona? {
+        let file = personasDirectory.appendingPathComponent("\(name).json")
+        guard let data = try? Data(contentsOf: file) else { return nil }
+        return try? JSONDecoder().decode(Persona.self, from: data)
+    }
+
+    /// Save a persona to a named file in the personas directory
+    static func save(_ persona: Persona, named name: String) {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? encoder.encode(persona) else { return }
+        let file = personasDirectory.appendingPathComponent("\(name).json")
+        try? data.write(to: file, options: .atomic)
+    }
+
+    /// Delete a persona file by name
+    static func delete(named name: String) {
+        let file = personasDirectory.appendingPathComponent("\(name).json")
+        try? FileManager.default.removeItem(at: file)
+    }
+
+    /// Path to the active persona's file
+    static var activePersonaFilePath: URL {
+        let name = SettingsManager.shared.current.activePersonaName
+        return personasDirectory.appendingPathComponent("\(name).json")
+    }
+}
+
+// MARK: - Loading & Migration
+
+extension Persona {
+
+    /// Load the active persona (set in Settings).
+    /// Falls through multiple sources: active file → any persona → old persona.json → bundled → hardcoded.
+    static func loadDefault() -> Persona {
+        let activeName = SettingsManager.shared.current.activePersonaName
+
+        // 1. Try the active persona
+        if let persona = load(named: activeName) {
+            return persona
+        }
+
+        // 2. Fall back to any persona in the directory
+        if let firstName = listAll().first, let persona = load(named: firstName) {
+            return persona
+        }
+
+        // 3. Fall back to old persona.json (pre-migration)
+        let oldPath = StateStore.appSupportDirectory.appendingPathComponent("persona.json")
+        if FileManager.default.fileExists(atPath: oldPath.path),
+           let data = try? Data(contentsOf: oldPath),
            let persona = try? JSONDecoder().decode(Persona.self, from: data) {
             return persona
         }
 
-        // Fall back to bundled default
+        // 4. Fall back to bundled default
         if let url = Bundle.main.url(forResource: "persona-default", withExtension: "json", subdirectory: "Resources"),
            let data = try? Data(contentsOf: url),
            let persona = try? JSONDecoder().decode(Persona.self, from: data) {
             return persona
         }
 
-        // Last resort: hardcoded minimal persona
+        // 5. Last resort
         return Persona.fallback
+    }
+
+    /// Migrate old persona.json into the personas/ directory.
+    /// Called once on launch — safe to call multiple times.
+    static func migrateIfNeeded() {
+        let oldPath = StateStore.appSupportDirectory.appendingPathComponent("persona.json")
+        guard FileManager.default.fileExists(atPath: oldPath.path) else { return }
+
+        if let data = try? Data(contentsOf: oldPath),
+           let persona = try? JSONDecoder().decode(Persona.self, from: data) {
+            save(persona, named: persona.name)
+        }
+
+        try? FileManager.default.removeItem(at: oldPath)
+    }
+
+    /// Ensure at least one persona exists in the personas/ directory.
+    static func ensureDefaultExists() {
+        let existing = listAll()
+        guard existing.isEmpty else { return }
+
+        // Copy bundled default
+        if let url = Bundle.main.url(forResource: "persona-default", withExtension: "json", subdirectory: "Resources"),
+           let data = try? Data(contentsOf: url),
+           let persona = try? JSONDecoder().decode(Persona.self, from: data) {
+            save(persona, named: persona.name)
+        } else {
+            save(fallback, named: fallback.name)
+        }
     }
 
     /// Minimal fallback persona if JSON loading fails

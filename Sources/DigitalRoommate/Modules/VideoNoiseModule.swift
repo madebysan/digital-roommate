@@ -17,6 +17,8 @@ class VideoNoiseModule: BrowsingModule {
     private var recentlyWatched: Set<String> = []
     private let maxRecentHistory = 50
 
+    private var settings: AppSettings { SettingsManager.shared.current }
+
     func execute(webView: WebViewInstance) async {
         isActive = true
         shouldStop = false
@@ -61,7 +63,12 @@ class VideoNoiseModule: BrowsingModule {
         let url = "https://www.youtube.com/results?search_query=\(encoded)"
 
         statusText = "Searching: \(query)"
-        ActivityLog.shared.log(module: id, action: "YouTube search: \(query)")
+        ActivityLog.shared.log(module: id, action: "YouTube search", metadata: [
+            "query": query,
+            "url": url,
+            "topic": interest.topic,
+            "sessionType": "search",
+        ])
 
         let loaded = await webView.loadURL(url)
         guard loaded, !shouldStop else { return }
@@ -95,7 +102,14 @@ class VideoNoiseModule: BrowsingModule {
         let result = await webView.executeJS(clickJS)
         if let videoUrl = result, videoUrl != "none" {
             await webView.wait(seconds: Double.random(in: 2...4))
-            await playAndWatchVideo(webView: webView)
+
+            ActivityLog.shared.log(module: id, action: "Clicked search result video", metadata: [
+                "query": query,
+                "videoUrl": videoUrl,
+                "videoId": extractVideoId(from: videoUrl) ?? "unknown",
+            ])
+
+            await playAndWatchVideo(webView: webView, sourceType: "search", sourceDetail: query)
             actionsCompleted += 1
 
             // Mark as watched
@@ -108,13 +122,17 @@ class VideoNoiseModule: BrowsingModule {
     /// Watch a video at a specific URL
     private func watchVideo(webView: WebViewInstance, url: String) async {
         statusText = "Loading video"
-        ActivityLog.shared.log(module: id, action: "Playing: \(url)")
+        ActivityLog.shared.log(module: id, action: "Direct video", metadata: [
+            "url": url,
+            "videoId": extractVideoId(from: url) ?? "unknown",
+            "sessionType": "direct",
+        ])
 
         let loaded = await webView.loadURL(url)
         guard loaded, !shouldStop else { return }
 
         await webView.wait(seconds: Double.random(in: 2...4))
-        await playAndWatchVideo(webView: webView)
+        await playAndWatchVideo(webView: webView, sourceType: "direct", sourceDetail: url)
         actionsCompleted += 1
 
         if let videoId = extractVideoId(from: url) {
@@ -125,7 +143,10 @@ class VideoNoiseModule: BrowsingModule {
     /// Browse a YouTube channel page
     private func browseChannel(webView: WebViewInstance, url: String) async {
         statusText = "Browsing channel"
-        ActivityLog.shared.log(module: id, action: "Channel: \(url)")
+        ActivityLog.shared.log(module: id, action: "Browsing channel", metadata: [
+            "channelUrl": url,
+            "sessionType": "channel",
+        ])
 
         let loaded = await webView.loadURL(url)
         guard loaded, !shouldStop else { return }
@@ -155,21 +176,23 @@ class VideoNoiseModule: BrowsingModule {
         let result = await webView.executeJS(clickJS)
         if result == "clicked" {
             await webView.wait(seconds: Double.random(in: 2...4))
-            await playAndWatchVideo(webView: webView)
+            await playAndWatchVideo(webView: webView, sourceType: "channel", sourceDetail: url)
             actionsCompleted += 1
         }
     }
 
     /// Core video watching behavior: play muted, skip ads, watch for variable duration
-    private func playAndWatchVideo(webView: WebViewInstance) async {
+    private func playAndWatchVideo(webView: WebViewInstance, sourceType: String, sourceDetail: String) async {
         let title = await webView.pageTitle()
         statusText = "Watching: \(String(title.prefix(40)))"
 
-        // Mute the video (we don't want audio from background browsing)
-        await webView.runJS("""
-            var video = document.querySelector('video');
-            if (video) { video.muted = true; video.volume = 0; }
-        """)
+        // Mute the video if enabled in settings
+        if settings.videoMute {
+            await webView.runJS("""
+                var video = document.querySelector('video');
+                if (video) { video.muted = true; video.volume = 0; }
+            """)
+        }
 
         // Try to play the video
         await webView.runJS("""
@@ -187,7 +210,9 @@ class VideoNoiseModule: BrowsingModule {
 
         // Wait a moment, then handle any ads
         await webView.wait(seconds: 3)
-        await skipAds(webView: webView)
+        if settings.videoAutoSkipAds {
+            await skipAds(webView: webView)
+        }
 
         // Determine watch duration (30-90% of video length)
         let durationStr = await webView.executeJS("""
@@ -196,22 +221,39 @@ class VideoNoiseModule: BrowsingModule {
         """)
 
         let videoDuration = Double(durationStr ?? "0") ?? 0
+        let maxWatchSeconds = Double(settings.videoMaxWatchMinutes * 60)
         let watchDuration: Double
 
         if videoDuration > 0 {
             let watchPercent = Double.random(in: 0.3...0.9)
-            watchDuration = min(videoDuration * watchPercent, 600) // Cap at 10 minutes
+            watchDuration = min(videoDuration * watchPercent, maxWatchSeconds)
         } else {
-            watchDuration = Double.random(in: 60...300) // Default 1-5 minutes
+            watchDuration = Double.random(in: 60...min(300, maxWatchSeconds))
         }
 
-        ActivityLog.shared.log(module: id, action: "Watching \(Int(watchDuration))s of \(Int(videoDuration))s: \(title)")
+        let currentUrl = await webView.executeJS("window.location.href") ?? ""
+        let videoId = extractVideoId(from: currentUrl) ?? "unknown"
+
+        ActivityLog.shared.log(module: id, action: "Watching video", metadata: [
+            "videoTitle": title,
+            "url": currentUrl,
+            "videoId": videoId,
+            "videoDurationSec": "\(Int(videoDuration))",
+            "watchDurationSec": "\(Int(watchDuration))",
+            "maxWatchMinSetting": "\(settings.videoMaxWatchMinutes)",
+            "muted": "\(settings.videoMute)",
+            "autoSkipAds": "\(settings.videoAutoSkipAds)",
+            "sourceType": sourceType,
+            "sourceDetail": sourceDetail,
+        ])
 
         // Watch the video, periodically checking for ads
         let startTime = Date()
         while Date().timeIntervalSince(startTime) < watchDuration && !shouldStop {
             await webView.wait(seconds: Double.random(in: 10...20))
-            await skipAds(webView: webView)
+            if settings.videoAutoSkipAds {
+                await skipAds(webView: webView)
+            }
 
             // Occasionally scroll down a bit (looking at description/comments)
             if Double.random(in: 0...1) < 0.2 {

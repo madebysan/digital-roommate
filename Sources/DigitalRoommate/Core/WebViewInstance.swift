@@ -10,6 +10,10 @@ class WebViewInstance: NSObject, WKNavigationDelegate {
     let moduleId: String
     private var navigationContinuation: CheckedContinuation<Bool, Never>?
     private var isNavigating = false
+    private var hasResumed = false
+
+    // How long to wait for a page to load before giving up (seconds)
+    private let navigationTimeout: TimeInterval = 30
 
     init(moduleId: String, userAgent: String, stealthScripts: [String]) {
         self.moduleId = moduleId
@@ -47,19 +51,39 @@ class WebViewInstance: NSObject, WKNavigationDelegate {
 
     /// Load a URL and wait for the page to finish loading.
     /// Returns true if the page loaded successfully.
+    /// Times out after 30 seconds to prevent hanging forever.
     @MainActor
     func loadURL(_ urlString: String) async -> Bool {
         guard let url = URL(string: urlString) else {
-            ActivityLog.shared.log(module: moduleId, action: "Invalid URL: \(urlString)")
+            ActivityLog.shared.log(module: moduleId, action: "Invalid URL", metadata: [
+                "url": urlString,
+            ])
             return false
         }
 
         isNavigating = true
+        hasResumed = false
         webView.load(URLRequest(url: url))
 
-        // Wait for navigation to complete (or fail)
-        let success = await withCheckedContinuation { continuation in
+        // Wait for navigation to complete, fail, or timeout
+        let success = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             self.navigationContinuation = continuation
+
+            // Start a timeout task — if the page doesn't finish in time,
+            // stop loading and resume with failure
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(self?.navigationTimeout ?? 30) * 1_000_000_000)
+                guard let self = self, self.isNavigating, !self.hasResumed else { return }
+                self.hasResumed = true
+                self.isNavigating = false
+                self.webView.stopLoading()
+                ActivityLog.shared.log(module: self.moduleId, action: "Navigation timeout", metadata: [
+                    "url": urlString,
+                    "timeoutSec": "\(Int(self.navigationTimeout))",
+                ])
+                self.navigationContinuation?.resume(returning: false)
+                self.navigationContinuation = nil
+            }
         }
 
         return success
@@ -104,28 +128,34 @@ class WebViewInstance: NSObject, WKNavigationDelegate {
     // MARK: - WKNavigationDelegate
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        if isNavigating {
-            isNavigating = false
-            navigationContinuation?.resume(returning: true)
-            navigationContinuation = nil
-        }
+        guard isNavigating, !hasResumed else { return }
+        hasResumed = true
+        isNavigating = false
+        navigationContinuation?.resume(returning: true)
+        navigationContinuation = nil
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        if isNavigating {
-            isNavigating = false
-            ActivityLog.shared.log(module: moduleId, action: "Navigation failed: \(error.localizedDescription)")
-            navigationContinuation?.resume(returning: false)
-            navigationContinuation = nil
-        }
+        guard isNavigating, !hasResumed else { return }
+        hasResumed = true
+        isNavigating = false
+        ActivityLog.shared.log(module: moduleId, action: "Navigation failed", metadata: [
+            "error": error.localizedDescription,
+            "url": webView.url?.absoluteString ?? "unknown",
+        ])
+        navigationContinuation?.resume(returning: false)
+        navigationContinuation = nil
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        if isNavigating {
-            isNavigating = false
-            ActivityLog.shared.log(module: moduleId, action: "Provisional navigation failed: \(error.localizedDescription)")
-            navigationContinuation?.resume(returning: false)
-            navigationContinuation = nil
-        }
+        guard isNavigating, !hasResumed else { return }
+        hasResumed = true
+        isNavigating = false
+        ActivityLog.shared.log(module: moduleId, action: "Provisional navigation failed", metadata: [
+            "error": error.localizedDescription,
+            "url": webView.url?.absoluteString ?? "unknown",
+        ])
+        navigationContinuation?.resume(returning: false)
+        navigationContinuation = nil
     }
 }
