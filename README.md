@@ -60,6 +60,17 @@ swift build -c release
 
 ## Usage
 
+### First Launch — Onboarding
+
+On first run, a 5-step onboarding wizard walks you through:
+1. Welcome overview
+2. Module selection (toggle which traffic types to generate)
+3. Activity level (Low / Medium / High)
+4. Persona introduction
+5. Summary and confirmation
+
+The scheduler doesn't start until you click "Get Started."
+
 ### Menu Bar
 
 Click the person icon in the menu bar to see:
@@ -68,6 +79,22 @@ Click the person icon in the menu bar to see:
 - Pause/Resume all activity
 - Enable Launch at Login
 - Open the activity log
+
+### Settings
+
+The settings window uses a sidebar layout with 7 sections:
+
+| Section | What You Configure |
+|---------|-------------------|
+| **General** | Activity level, active time blocks, max concurrent browsers, launch at login |
+| **Search** | Search engine toggles (Google, Bing, DuckDuckGo), burst mode, click-through |
+| **Shopping** | Products per session, image browsing, review scrolling |
+| **Video** | Max watch duration, ad skipping, mute |
+| **News** | Articles per session, sites per session, follow related links |
+| **Sites & Privacy** | Visited sites list, blocked domains |
+| **Persona** | Active persona picker, randomize, export, reset, edit interests/topics/categories |
+
+Toggle controls use NSSwitch for on/off settings and NSPopUpButton for numeric options. Changes apply immediately (except Persona, which has a Save button).
 
 ### Activity Log
 
@@ -80,13 +107,19 @@ Each entry records what module did what and when — useful for verifying the ap
 
 ### Customizing the Persona
 
-Edit the default persona at:
+Personas are stored in:
 ```
-~/Library/Application Support/DigitalRoommate/persona.json
+~/Library/Application Support/DigitalRoommate/personas/
 ```
 
-If this file doesn't exist, copy and modify the bundled `Resources/persona-default.json`. The persona defines:
+You can manage personas from Settings > Persona:
+- **Switch** between multiple saved personas
+- **Randomize** to generate a new persona with random interests
+- **Export** the current persona as a JSON file
+- **Edit** interests, search topics, shopping categories, and video preferences inline
+- **Open** the JSON file directly for advanced editing
 
+Each persona defines:
 - **Search topics** — Categories, query templates, and items to search for
 - **Shopping categories** — Amazon search terms and product URLs
 - **Video interests** — YouTube channels, search queries, and specific video URLs
@@ -111,13 +144,26 @@ Sources/DigitalRoommate/
 │   ├── VideoNoiseModule.swift    # YouTube watching with ad skip
 │   └── NewsModule.swift          # News reading with link following
 ├── Persona/
-│   ├── Persona.swift             # Codable persona model
+│   ├── Persona.swift             # Codable persona model + multi-persona storage
+│   ├── PersonaGenerator.swift    # Random persona generation
 │   ├── PersonaSchedule.swift     # Time-based activity decisions
 │   └── QueryGenerator.swift      # Template-based search query generation
+├── Settings/
+│   ├── AppSettings.swift         # All user-configurable settings (Codable)
+│   └── SettingsManager.swift     # Singleton settings persistence (UserDefaults)
 ├── UI/
-│   └── StatusBarController.swift # Menu bar icon and dropdown
+│   ├── Styles.swift              # Shared visual constants and UI helpers
+│   ├── StatusBarController.swift # Menu bar icon and dropdown
+│   ├── SettingsWindowController.swift  # Sidebar-based settings window
+│   ├── OnboardingWindowController.swift # 5-step first-run wizard
+│   └── HelpWindowController.swift      # Help/about window
 ├── Persistence/
 │   └── StateStore.swift          # JSON state files + activity log
+├── Testing/
+│   ├── TestRunner.swift          # Test execution framework
+│   ├── TestConfig.swift          # Test configuration
+│   ├── TestPersonas.swift        # Test persona fixtures
+│   └── MockWebViewInstance.swift # WKWebView mock for testing
 └── AntiDetection/
     ├── UserAgentProvider.swift    # UA rotation from bundled list
     └── StealthScripts.swift      # JS injected at document start

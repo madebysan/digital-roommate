@@ -104,6 +104,10 @@ class OnboardingWindowController: NSWindowController {
         nextButton.translatesAutoresizingMaskIntoConstraints = false
         nextButton.bezelStyle = .rounded
         nextButton.keyEquivalent = "\r"
+        nextButton.contentTintColor = .white
+        nextButton.wantsLayer = true
+        nextButton.layer?.backgroundColor = Styles.accentColor.cgColor
+        nextButton.layer?.cornerRadius = 6
         bottomBar.addSubview(nextButton)
 
         NSLayoutConstraint.activate([
@@ -190,7 +194,7 @@ class OnboardingWindowController: NSWindowController {
         // Icon
         let iconView = NSImageView()
         if let img = NSImage(systemSymbolName: "person.fill.viewfinder", accessibilityDescription: nil) {
-            let config = NSImage.SymbolConfiguration(pointSize: 48, weight: .light)
+            let config = NSImage.SymbolConfiguration(pointSize: 56, weight: .light)
             iconView.image = img.withSymbolConfiguration(config)
             iconView.contentTintColor = Styles.accentColor
         }
@@ -304,7 +308,7 @@ class OnboardingWindowController: NSWindowController {
         row.alignment = .centerY
         row.spacing = 12
         row.translatesAutoresizingMaskIntoConstraints = false
-        row.edgeInsets = NSEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
+        row.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
 
         card.addSubview(row)
 
@@ -417,7 +421,7 @@ class OnboardingWindowController: NSWindowController {
         row.alignment = .centerY
         row.spacing = 12
         row.translatesAutoresizingMaskIntoConstraints = false
-        row.edgeInsets = NSEdgeInsets(top: 10, left: 14, bottom: 10, right: 14)
+        row.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
         card.addSubview(row)
 
         NSLayoutConstraint.activate([
@@ -454,7 +458,7 @@ class OnboardingWindowController: NSWindowController {
         // Icon
         let iconView = NSImageView()
         if let img = NSImage(systemSymbolName: "person.text.rectangle", accessibilityDescription: nil) {
-            let config = NSImage.SymbolConfiguration(pointSize: 48, weight: .light)
+            let config = NSImage.SymbolConfiguration(pointSize: 56, weight: .light)
             iconView.image = img.withSymbolConfiguration(config)
             iconView.contentTintColor = Styles.accentColor
         }
@@ -501,7 +505,7 @@ class OnboardingWindowController: NSWindowController {
         // Icon
         let iconView = NSImageView()
         if let img = NSImage(systemSymbolName: "checkmark.seal.fill", accessibilityDescription: nil) {
-            let config = NSImage.SymbolConfiguration(pointSize: 48, weight: .light)
+            let config = NSImage.SymbolConfiguration(pointSize: 56, weight: .light)
             iconView.image = img.withSymbolConfiguration(config)
             iconView.contentTintColor = NSColor.systemGreen
         }
