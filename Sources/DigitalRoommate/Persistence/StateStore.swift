@@ -36,6 +36,8 @@ struct StateStore {
 
 // Logs all module activity to a JSON file for inspection.
 // Append-only log with timestamps — useful for verifying the app is working.
+// Each entry carries structured metadata so you can see exactly what happened:
+// which URL was loaded, what query was searched, which engine was used, etc.
 class ActivityLog {
 
     static let shared = ActivityLog()
@@ -44,6 +46,11 @@ class ActivityLog {
         let timestamp: String
         let module: String
         let action: String
+        // Structured context — every key/value pair relevant to this event.
+        // Common keys: url, query, engine, pageTitle, searchTerm, siteName,
+        // productTitle, videoTitle, watchDurationSec, videoDurationSec,
+        // sessionType, actionsCompleted, timeBlock, activityLevel, error
+        let metadata: [String: String]?
     }
 
     private var buffer: [Entry] = []
@@ -55,21 +62,27 @@ class ActivityLog {
         return StateStore.appSupportDirectory.appendingPathComponent(filename)
     }
 
-    /// Add a log entry. Flushes to disk periodically.
-    func log(module: String, action: String) {
+    /// Add a log entry with optional structured metadata. Flushes to disk periodically.
+    func log(module: String, action: String, metadata: [String: String]? = nil) {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withFullDate, .withFullTime, .withTimeZone]
 
         let entry = Entry(
             timestamp: formatter.string(from: Date()),
             module: module,
-            action: action
+            action: action,
+            metadata: metadata
         )
 
         buffer.append(entry)
 
-        // Also print to console for debugging during development
-        print("[\(entry.timestamp)] [\(module)] \(action)")
+        // Console output includes metadata for debugging
+        var line = "[\(entry.timestamp)] [\(module)] \(action)"
+        if let meta = metadata, !meta.isEmpty {
+            let pairs = meta.sorted(by: { $0.key < $1.key }).map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+            line += " | \(pairs)"
+        }
+        print(line)
 
         if buffer.count >= bufferLimit {
             flush()

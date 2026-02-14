@@ -1,6 +1,5 @@
 import Cocoa
 import Combine
-import ServiceManagement
 
 // Manages the menu bar icon and dropdown menu.
 // Shows module status, toggles, schedule info, and app controls.
@@ -30,7 +29,7 @@ class StatusBarController {
         rebuildMenu()
     }
 
-    private func rebuildMenu() {
+    func rebuildMenu() {
         let menu = NSMenu()
 
         // Header
@@ -40,7 +39,7 @@ class StatusBarController {
 
         // Status line
         let statusText = scheduler.isRunning
-            ? "\(registry.enabledCount) modules active  ·  \(scheduler.currentTimeBlock)"
+            ? "\(registry.enabledCount) modules active  \u{00B7}  \(scheduler.currentTimeBlock)"
             : "Paused"
         let statusItem = NSMenuItem(title: statusText, action: nil, keyEquivalent: "")
         statusItem.isEnabled = false
@@ -65,7 +64,7 @@ class StatusBarController {
 
             // Show status as subtitle if active
             if module.isActive {
-                item.title = "\(module.displayName) — \(module.statusText)"
+                item.title = "\(module.displayName) \u{2014} \(module.statusText)"
             }
 
             menu.addItem(item)
@@ -80,20 +79,16 @@ class StatusBarController {
             menu.addItem(withTitle: "Resume All", action: #selector(resumeAll), keyEquivalent: "p").target = self
         }
 
+        // Settings
+        menu.addItem(withTitle: "Settings\u{2026}", action: #selector(openSettings), keyEquivalent: ",").target = self
+
         menu.addItem(.separator())
 
-        // Launch at Login toggle
-        let loginItem = NSMenuItem(
-            title: "Launch at Login",
-            action: #selector(toggleLaunchAtLogin(_:)),
-            keyEquivalent: ""
-        )
-        loginItem.target = self
-        loginItem.state = UserDefaults.standard.bool(forKey: "launchAtLogin") ? .on : .off
-        menu.addItem(loginItem)
+        // About
+        menu.addItem(withTitle: "About Digital Roommate\u{2026}", action: #selector(openAbout), keyEquivalent: "").target = self
 
         // Open activity log
-        menu.addItem(withTitle: "Show Activity Log...", action: #selector(showActivityLog), keyEquivalent: "l").target = self
+        menu.addItem(withTitle: "Show Activity Log\u{2026}", action: #selector(showActivityLog), keyEquivalent: "l").target = self
 
         menu.addItem(.separator())
 
@@ -119,6 +114,18 @@ class StatusBarController {
     @objc private func toggleModule(_ sender: NSMenuItem) {
         guard let moduleId = sender.representedObject as? String else { return }
         registry.toggleModule(moduleId)
+
+        // Also sync the toggle to AppSettings so it persists
+        SettingsManager.shared.update { settings in
+            switch moduleId {
+            case "search":   settings.searchEnabled = sender.state != .on
+            case "shopping": settings.shoppingEnabled = sender.state != .on
+            case "video":    settings.videoEnabled = sender.state != .on
+            case "news":     settings.newsEnabled = sender.state != .on
+            default: break
+            }
+        }
+
         rebuildMenu()
     }
 
@@ -135,22 +142,12 @@ class StatusBarController {
         ActivityLog.shared.log(module: "UI", action: "All modules resumed by user")
     }
 
-    @objc private func toggleLaunchAtLogin(_ sender: NSMenuItem) {
-        let current = UserDefaults.standard.bool(forKey: "launchAtLogin")
-        let newValue = !current
+    @objc private func openSettings() {
+        SettingsWindowController.shared.show()
+    }
 
-        do {
-            if newValue {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
-            UserDefaults.standard.set(newValue, forKey: "launchAtLogin")
-        } catch {
-            ActivityLog.shared.log(module: "UI", action: "Launch at Login failed: \(error.localizedDescription)")
-        }
-
-        rebuildMenu()
+    @objc private func openAbout() {
+        HelpWindowController.shared.show()
     }
 
     @objc private func showActivityLog() {

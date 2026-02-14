@@ -6,8 +6,10 @@ import WebKit
 // App Nap throttling that affects hidden/ordered-out windows.
 class BrowsingEngine {
 
-    // Maximum concurrent WKWebViews to limit memory usage
-    private let maxConcurrent = 3
+    // Maximum concurrent WKWebViews — reads from settings each time
+    private var maxConcurrent: Int {
+        return SettingsManager.shared.current.maxConcurrentBrowsers
+    }
 
     // The offscreen window that hosts all WKWebViews
     private var offscreenWindow: NSWindow!
@@ -17,6 +19,9 @@ class BrowsingEngine {
 
     // Lock for thread-safe access to activeViews
     private let lock = NSLock()
+
+    // Factory for creating web view instances — override in test mode to use mocks
+    var webViewFactory: (@MainActor (String) -> WebViewInstance)? = nil
 
     init() {
         setupOffscreenWindow()
@@ -51,14 +56,22 @@ class BrowsingEngine {
 
         // Check if we're at capacity
         if activeViews.count >= maxConcurrent {
-            ActivityLog.shared.log(module: moduleId, action: "WebView pool full (\(maxConcurrent) active)")
+            ActivityLog.shared.log(module: moduleId, action: "WebView pool full", metadata: [
+                "maxConcurrent": "\(maxConcurrent)",
+                "activeModules": activeViews.keys.sorted().joined(separator: ", "),
+            ])
             return nil
         }
 
-        // Create a new instance with a random user agent and stealth scripts
-        let ua = UserAgentProvider.shared.randomUserAgent()
-        let scripts = StealthScripts.allScripts
-        let instance = WebViewInstance(moduleId: moduleId, userAgent: ua, stealthScripts: scripts)
+        // Create a new instance — use the factory if set (test mode), otherwise default
+        let instance: WebViewInstance
+        if let factory = webViewFactory {
+            instance = factory(moduleId)
+        } else {
+            let ua = UserAgentProvider.shared.randomUserAgent()
+            let scripts = StealthScripts.allScripts
+            instance = WebViewInstance(moduleId: moduleId, userAgent: ua, stealthScripts: scripts)
+        }
 
         // Add the webview to the offscreen window
         instance.webView.frame = NSRect(x: 0, y: 0, width: 1280, height: 800)

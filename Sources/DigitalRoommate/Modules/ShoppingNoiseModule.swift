@@ -13,6 +13,8 @@ class ShoppingNoiseModule: BrowsingModule {
     private(set) var actionsCompleted = 0
     private var shouldStop = false
 
+    private var settings: AppSettings { SettingsManager.shared.current }
+
     func execute(webView: WebViewInstance) async {
         isActive = true
         shouldStop = false
@@ -53,7 +55,12 @@ class ShoppingNoiseModule: BrowsingModule {
         let url = "https://www.amazon.com/s?k=\(encoded)"
 
         statusText = "Searching: \(searchTerm)"
-        ActivityLog.shared.log(module: id, action: "Amazon search: \(searchTerm)")
+        ActivityLog.shared.log(module: id, action: "Amazon search", metadata: [
+            "searchTerm": searchTerm,
+            "category": category.name,
+            "url": url,
+            "sessionType": "search",
+        ])
 
         let loaded = await webView.loadURL(url)
         guard loaded, !shouldStop else { return }
@@ -65,29 +72,31 @@ class ShoppingNoiseModule: BrowsingModule {
         await scrollSearchResults(webView: webView)
         actionsCompleted += 1
 
-        // Click on 1-2 products from results
-        let productsToView = Int.random(in: 1...2)
+        // Click on products from results (count from settings)
+        let maxProducts = settings.shoppingProductsPerSession
+        let productsToView = Int.random(in: 1...max(1, maxProducts))
         for i in 0..<productsToView {
             guard !shouldStop else { return }
 
-            // Click a product link from search results
+            // Click a product link from search results — returns href or "no-products"
             let clickJS = """
             (function() {
                 var products = document.querySelectorAll('[data-component-type="s-search-result"] h2 a, .s-result-item h2 a');
                 var valid = Array.from(products).filter(function(a) { return a.href && a.href.includes('/dp/'); });
                 if (valid.length > \(i)) {
                     var idx = Math.min(\(i) + Math.floor(Math.random() * 3), valid.length - 1);
+                    var href = valid[idx].href;
                     valid[idx].click();
-                    return 'clicked';
+                    return href;
                 }
                 return 'no-products';
             })()
             """
 
             let result = await webView.executeJS(clickJS)
-            if result == "clicked" {
+            if let productUrl = result, productUrl != "no-products" {
                 await webView.wait(seconds: Double.random(in: 2...4))
-                await browseProductDetails(webView: webView)
+                await browseProductDetails(webView: webView, fromSearch: searchTerm, productUrl: productUrl, productIndex: i + 1, totalProducts: productsToView)
                 actionsCompleted += 1
 
                 // Go back to search results for next product
@@ -102,21 +111,33 @@ class ShoppingNoiseModule: BrowsingModule {
     /// Browse a product page directly
     private func browseProductPage(webView: WebViewInstance, url: String) async {
         statusText = "Viewing product"
-        ActivityLog.shared.log(module: id, action: "Direct product: \(url)")
+        ActivityLog.shared.log(module: id, action: "Direct product page", metadata: [
+            "url": url,
+            "sessionType": "direct",
+        ])
 
         let loaded = await webView.loadURL(url)
         guard loaded, !shouldStop else { return }
 
         await webView.wait(seconds: Double.random(in: 2...4))
-        await browseProductDetails(webView: webView)
+        await browseProductDetails(webView: webView, fromSearch: nil, productUrl: url, productIndex: 1, totalProducts: 1)
         actionsCompleted += 1
     }
 
     /// Simulate browsing a product page — scroll, view images, read reviews
-    private func browseProductDetails(webView: WebViewInstance) async {
+    private func browseProductDetails(webView: WebViewInstance, fromSearch: String?, productUrl: String, productIndex: Int, totalProducts: Int) async {
         let title = await webView.pageTitle()
+        let currentUrl = await webView.executeJS("window.location.href") ?? productUrl
         statusText = "Viewing: \(String(title.prefix(40)))"
-        ActivityLog.shared.log(module: id, action: "Viewing product: \(title)")
+
+        var meta: [String: String] = [
+            "productTitle": title,
+            "url": currentUrl,
+            "productIndex": "\(productIndex)/\(totalProducts)",
+        ]
+        if let search = fromSearch { meta["searchTerm"] = search }
+
+        ActivityLog.shared.log(module: id, action: "Viewing product", metadata: meta)
 
         // Scroll down slowly (reading product details)
         for _ in 0..<Int.random(in: 3...6) {
@@ -126,8 +147,8 @@ class ShoppingNoiseModule: BrowsingModule {
             await webView.wait(seconds: Double.random(in: 1...3))
         }
 
-        // 50% chance: click through product images
-        if Double.random(in: 0...1) < 0.5 && !shouldStop {
+        // 50% chance: click through product images (if enabled)
+        if settings.shoppingBrowseImages && Double.random(in: 0...1) < 0.5 && !shouldStop {
             await webView.runJS("""
                 var imgThumbs = document.querySelectorAll('#altImages img, .imageThumbnail img');
                 if (imgThumbs.length > 1) {
@@ -138,8 +159,8 @@ class ShoppingNoiseModule: BrowsingModule {
             await webView.wait(seconds: Double.random(in: 1...2))
         }
 
-        // 30% chance: scroll to reviews section
-        if Double.random(in: 0...1) < 0.3 && !shouldStop {
+        // 30% chance: scroll to reviews section (if enabled)
+        if settings.shoppingScrollToReviews && Double.random(in: 0...1) < 0.3 && !shouldStop {
             await webView.runJS("""
                 var reviewSection = document.getElementById('customerReviews') || document.getElementById('reviews-medley-footer');
                 if (reviewSection) reviewSection.scrollIntoView({behavior: 'smooth'});

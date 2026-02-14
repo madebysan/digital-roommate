@@ -12,6 +12,12 @@ class Scheduler {
     private var nextRunTime: [String: Date] = [:]
     private(set) var isRunning = false
 
+    // Configurable for test mode — production uses defaults
+    var tickInterval: TimeInterval = 30
+    var maxCycles: Int? = nil
+    var testMode = false  // When true, skip Poisson delays and run modules immediately
+    private var completedCycles = 0
+
     // Time blocks that determine activity levels throughout the day
     enum TimeBlock: String {
         case morning    // 6 AM - 12 PM — moderate activity
@@ -77,14 +83,22 @@ class Scheduler {
             scheduleNext(for: module.id)
         }
 
-        // Check every 30 seconds which modules are due to run
-        timer = Timer.publish(every: 30, on: .main, in: .common)
+        completedCycles = 0
+
+        // Check periodically which modules are due to run
+        timer = Timer.publish(every: tickInterval, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
                 self?.tick()
             }
 
-        ActivityLog.shared.log(module: "Scheduler", action: "Started (time block: \(TimeBlock.current().rawValue))")
+        let settings = SettingsManager.shared.current
+        ActivityLog.shared.log(module: "Scheduler", action: "Started", metadata: [
+            "timeBlock": TimeBlock.current().rawValue,
+            "activityLevel": settings.activityLevel.rawValue,
+            "enabledModules": registry.allModules.filter { $0.isEnabled }.map { $0.id }.joined(separator: ", "),
+            "maxConcurrentBrowsers": "\(settings.maxConcurrentBrowsers)",
+        ])
     }
 
     func stop() {
@@ -99,7 +113,9 @@ class Scheduler {
         moduleTasks.removeAll()
         nextRunTime.removeAll()
 
-        ActivityLog.shared.log(module: "Scheduler", action: "Stopped")
+        ActivityLog.shared.log(module: "Scheduler", action: "Stopped", metadata: [
+            "timeBlock": TimeBlock.current().rawValue,
+        ])
     }
 
     /// Returns the next scheduled time for a module, or nil if not scheduled
@@ -115,7 +131,19 @@ class Scheduler {
     // MARK: - Private
 
     private func tick() {
+        // Stop after max cycles if set (test mode)
+        if let max = maxCycles, completedCycles >= max {
+            stop()
+            return
+        }
+        completedCycles += 1
+
         let now = Date()
+
+        // Check if the current time block is enabled in settings
+        let settings = SettingsManager.shared.current
+        let currentBlock = TimeBlock.current()
+        guard settings.isTimeBlockEnabled(currentBlock.rawValue) else { return }
 
         for module in registry.allModules {
             // Skip disabled modules
@@ -149,10 +177,22 @@ class Scheduler {
                     return
                 }
 
-                ActivityLog.shared.log(module: module.id, action: "Starting session")
+                let sessionTimeBlock = TimeBlock.current().rawValue
+                let sessionActivityLevel = SettingsManager.shared.current.activityLevel.rawValue
+                let activeWebViews = self.registry.engine.activeCount
+
+                ActivityLog.shared.log(module: module.id, action: "Session started", metadata: [
+                    "timeBlock": sessionTimeBlock,
+                    "activityLevel": sessionActivityLevel,
+                    "activeWebViews": "\(activeWebViews + 1)",
+                ])
+
+                let sessionStart = Date()
 
                 // Let the module do its thing
                 await module.execute(webView: webView)
+
+                let sessionDuration = Date().timeIntervalSince(sessionStart)
 
                 // Release the web view back to the pool
                 self.registry.engine.releaseWebView(for: module.id)
@@ -160,7 +200,15 @@ class Scheduler {
                 // Schedule the next run
                 self.scheduleNext(for: module.id)
 
-                ActivityLog.shared.log(module: module.id, action: "Session complete (\(module.actionsCompleted) actions)")
+                let nextTime = self.nextRunTime[module.id]
+                let nextRunStr = nextTime.map { "\(Int($0.timeIntervalSinceNow))s from now" } ?? "unknown"
+
+                ActivityLog.shared.log(module: module.id, action: "Session complete", metadata: [
+                    "actionsCompleted": "\(module.actionsCompleted)",
+                    "sessionDurationSec": "\(Int(sessionDuration))",
+                    "timeBlock": sessionTimeBlock,
+                    "nextRun": nextRunStr,
+                ])
             }
 
             moduleTasks[module.id] = task
@@ -171,6 +219,12 @@ class Scheduler {
     /// Poisson distribution means intervals vary naturally — sometimes short,
     /// sometimes long — which looks more human than fixed intervals.
     private func scheduleNext(for moduleId: String, delayMinutes: Double? = nil) {
+        // In test mode, schedule immediately so modules run every tick
+        if testMode {
+            nextRunTime[moduleId] = Date()
+            return
+        }
+
         let delay: Double
 
         if let fixed = delayMinutes {
@@ -180,10 +234,14 @@ class Scheduler {
             let isWeekend = Calendar.current.isDateInWeekend(Date())
             let avgInterval = timeBlock.adjustedInterval(isWeekend: isWeekend)
 
+            // Apply activity level multiplier from settings
+            let multiplier = SettingsManager.shared.current.activityLevel.intervalMultiplier
+            let adjustedInterval = avgInterval * multiplier
+
             // Poisson-distributed delay: -ln(U) * mean, where U is uniform(0,1)
             // This gives exponentially distributed inter-arrival times
             let u = Double.random(in: 0.001...0.999)
-            delay = -log(u) * avgInterval
+            delay = -log(u) * adjustedInterval
         }
 
         let nextTime = Date().addingTimeInterval(delay * 60)
