@@ -13,8 +13,9 @@ class VideoNoiseModule: BrowsingModule {
     private(set) var actionsCompleted = 0
     private var shouldStop = false
 
-    // Track watched videos to avoid immediate rewatching
-    private var recentlyWatched: Set<String> = []
+    // Track watched videos to avoid immediate rewatching (ordered array so
+    // removeFirst() drops the oldest entry, not an arbitrary one like Set does)
+    private var recentlyWatched: [String] = []
     private let maxRecentHistory = 50
 
     private var settings: AppSettings { SettingsManager.shared.current }
@@ -33,17 +34,22 @@ class VideoNoiseModule: BrowsingModule {
         // Pick a random video interest for this session
         let interest = persona.videoInterests.randomElement()!
 
+        // Filter URLs through the blocked domains list
+        let allowedVideoUrls = interest.videoUrls.filter { !settings.isDomainBlocked($0) }
+        let allowedChannelUrls = interest.channelUrls.filter { !settings.isDomainBlocked($0) }
+        let youtubeBlocked = settings.isDomainBlocked("https://www.youtube.com")
+
         // Decide: search YouTube or go to a direct URL?
-        if !interest.videoUrls.isEmpty && Double.random(in: 0...1) < 0.5 {
+        if !allowedVideoUrls.isEmpty && Double.random(in: 0...1) < 0.5 {
             // Direct video URL
-            let url = pickUnwatchedVideo(from: interest.videoUrls)
+            let url = pickUnwatchedVideo(from: allowedVideoUrls)
             await watchVideo(webView: webView, url: url)
-        } else if !interest.searchQueries.isEmpty {
+        } else if !interest.searchQueries.isEmpty && !youtubeBlocked {
             // Search YouTube and watch a result
             await searchAndWatch(webView: webView, interest: interest)
-        } else if !interest.channelUrls.isEmpty {
+        } else if !allowedChannelUrls.isEmpty {
             // Browse a channel page
-            await browseChannel(webView: webView, url: interest.channelUrls.randomElement()!)
+            await browseChannel(webView: webView, url: allowedChannelUrls.randomElement()!)
         }
 
         statusText = "Idle"
@@ -291,8 +297,10 @@ class VideoNoiseModule: BrowsingModule {
     }
 
     private func markWatched(_ videoId: String) {
-        recentlyWatched.insert(videoId)
-        // Trim history to prevent unbounded growth
+        if !recentlyWatched.contains(videoId) {
+            recentlyWatched.append(videoId)
+        }
+        // Trim oldest entries to prevent unbounded growth
         if recentlyWatched.count > maxRecentHistory {
             recentlyWatched.removeFirst()
         }

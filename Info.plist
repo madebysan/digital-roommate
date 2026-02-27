@@ -16,14 +16,14 @@
     <string>APPL</string>
     <key>CFBundleExecutable</key>
     <string>DigitalRoommate</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsArbitraryLoads</key>
-        <true/>
-    </dict>
+    <!-- App Transport Security enforced — HTTPS only.
+         All target sites (Google, Amazon, YouTube, major news) support HTTPS.
+         This prevents leaking full URL paths over plaintext HTTP. -->
 </dict>
 </plist>

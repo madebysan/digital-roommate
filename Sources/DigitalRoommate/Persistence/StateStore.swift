@@ -53,6 +53,9 @@ class ActivityLog {
         let metadata: [String: String]?
     }
 
+    // Serial queue protects buffer from concurrent access —
+    // multiple modules call log() from parallel Tasks
+    private let queue = DispatchQueue(label: "com.madebysan.digital-roommate.activitylog")
     private var buffer: [Entry] = []
     private let bufferLimit = 5
     private let maxEntries = 5000
@@ -74,23 +77,33 @@ class ActivityLog {
             metadata: metadata
         )
 
-        buffer.append(entry)
-
         // Console output includes metadata for debugging
+        #if DEBUG
         var line = "[\(entry.timestamp)] [\(module)] \(action)"
         if let meta = metadata, !meta.isEmpty {
             let pairs = meta.sorted(by: { $0.key < $1.key }).map { "\($0.key)=\($0.value)" }.joined(separator: " ")
             line += " | \(pairs)"
         }
         print(line)
+        #endif
 
-        if buffer.count >= bufferLimit {
-            flush()
+        queue.sync {
+            buffer.append(entry)
+            if buffer.count >= bufferLimit {
+                flushBuffer()
+            }
         }
     }
 
     /// Write buffered entries to disk
     func flush() {
+        queue.sync {
+            flushBuffer()
+        }
+    }
+
+    /// Internal flush — must be called from within `queue.sync`
+    private func flushBuffer() {
         guard !buffer.isEmpty else { return }
 
         // Load existing entries

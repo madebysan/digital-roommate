@@ -80,11 +80,13 @@ class OnboardingWindowController: NSWindowController {
         dotStack.translatesAutoresizingMaskIntoConstraints = false
 
         for i in 0..<totalSteps {
-            let dot = NSView()
+            let dot = NSBox()
+            dot.boxType = .custom
+            dot.cornerRadius = 4
+            dot.fillColor = (i == 0 ? Styles.accentColor : Styles.tertiaryLabel)
+            dot.borderWidth = 0
+            dot.titlePosition = .noTitle
             dot.translatesAutoresizingMaskIntoConstraints = false
-            dot.wantsLayer = true
-            dot.layer?.cornerRadius = 4
-            dot.layer?.backgroundColor = (i == 0 ? Styles.accentColor : Styles.tertiaryLabel).cgColor
             NSLayoutConstraint.activate([
                 dot.widthAnchor.constraint(equalToConstant: 8),
                 dot.heightAnchor.constraint(equalToConstant: 8),
@@ -92,6 +94,8 @@ class OnboardingWindowController: NSWindowController {
             dotStack.addArrangedSubview(dot)
         }
 
+        dotStack.setAccessibilityRole(.group)
+        dotStack.setAccessibilityLabel("Step 1 of \(totalSteps)")
         bottomBar.addSubview(dotStack)
 
         // Navigation buttons
@@ -100,14 +104,8 @@ class OnboardingWindowController: NSWindowController {
         backButton.bezelStyle = .rounded
         bottomBar.addSubview(backButton)
 
-        nextButton = NSButton(title: "Continue", target: self, action: #selector(goNext))
+        nextButton = Styles.accentButton("Continue", target: self, action: #selector(goNext))
         nextButton.translatesAutoresizingMaskIntoConstraints = false
-        nextButton.bezelStyle = .rounded
-        nextButton.keyEquivalent = "\r"
-        nextButton.contentTintColor = .white
-        nextButton.wantsLayer = true
-        nextButton.layer?.backgroundColor = Styles.accentColor.cgColor
-        nextButton.layer?.cornerRadius = 6
         bottomBar.addSubview(nextButton)
 
         NSLayoutConstraint.activate([
@@ -118,7 +116,7 @@ class OnboardingWindowController: NSWindowController {
 
             bottomBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Styles.windowPadding),
             bottomBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Styles.windowPadding),
-            bottomBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16),
+            bottomBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Styles.bottomBarPadding),
             bottomBar.heightAnchor.constraint(equalToConstant: 36),
 
             dotStack.centerXAnchor.constraint(equalTo: bottomBar.centerXAnchor),
@@ -137,32 +135,49 @@ class OnboardingWindowController: NSWindowController {
     private func showStep(_ step: Int) {
         currentStep = step
 
-        // Clear previous content
-        contentContainer.subviews.forEach { $0.removeFromSuperview() }
+        // Cross-dissolve transition between steps
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            context.allowsImplicitAnimation = true
+            contentContainer.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            guard let self = self else { return }
 
-        // Build step content
-        let stepView: NSView
-        switch step {
-        case 0: stepView = buildWelcomeStep()
-        case 1: stepView = buildModulesStep()
-        case 2: stepView = buildActivityStep()
-        case 3: stepView = buildPersonaStep()
-        case 4: stepView = buildReadyStep()
-        default: return
+            // Clear previous content
+            self.contentContainer.subviews.forEach { $0.removeFromSuperview() }
+
+            // Build step content
+            let stepView: NSView
+            switch step {
+            case 0: stepView = self.buildWelcomeStep()
+            case 1: stepView = self.buildModulesStep()
+            case 2: stepView = self.buildActivityStep()
+            case 3: stepView = self.buildPersonaStep()
+            case 4: stepView = self.buildReadyStep()
+            default: return
+            }
+
+            stepView.translatesAutoresizingMaskIntoConstraints = false
+            self.contentContainer.addSubview(stepView)
+            NSLayoutConstraint.activate([
+                stepView.topAnchor.constraint(equalTo: self.contentContainer.topAnchor, constant: Styles.windowPadding),
+                stepView.leadingAnchor.constraint(equalTo: self.contentContainer.leadingAnchor, constant: Styles.windowPadding),
+                stepView.trailingAnchor.constraint(equalTo: self.contentContainer.trailingAnchor, constant: -Styles.windowPadding),
+            ])
+
+            // Fade in new content
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.2
+                context.allowsImplicitAnimation = true
+                self.contentContainer.animator().alphaValue = 1
+            }
         }
-
-        stepView.translatesAutoresizingMaskIntoConstraints = false
-        contentContainer.addSubview(stepView)
-        NSLayoutConstraint.activate([
-            stepView.topAnchor.constraint(equalTo: contentContainer.topAnchor, constant: Styles.windowPadding),
-            stepView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor, constant: Styles.windowPadding),
-            stepView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor, constant: -Styles.windowPadding),
-        ])
 
         // Update dots
         for (i, dot) in dotStack.arrangedSubviews.enumerated() {
-            dot.layer?.backgroundColor = (i == step ? Styles.accentColor : Styles.tertiaryLabel).cgColor
+            (dot as? NSBox)?.fillColor = (i == step ? Styles.accentColor : Styles.tertiaryLabel)
         }
+        dotStack.setAccessibilityLabel("Step \(step + 1) of \(totalSteps)")
 
         // Update buttons
         backButton.isHidden = step == 0
@@ -194,7 +209,7 @@ class OnboardingWindowController: NSWindowController {
         // Icon
         let iconView = NSImageView()
         if let img = NSImage(systemSymbolName: "person.fill.viewfinder", accessibilityDescription: nil) {
-            let config = NSImage.SymbolConfiguration(pointSize: 56, weight: .light)
+            let config = NSImage.SymbolConfiguration(pointSize: Styles.heroIconSize, weight: .light)
             iconView.image = img.withSymbolConfiguration(config)
             iconView.contentTintColor = Styles.accentColor
         }
@@ -248,79 +263,26 @@ class OnboardingWindowController: NSWindowController {
             ("news", "newspaper", "News & Browsing", "Reads news articles, follows links"),
         ]
 
-        for (id, icon, name, desc) in modules {
-            let card = makeModuleCard(id: id, icon: icon, name: name, description: desc)
-            stack.addArrangedSubview(card)
+        let cardWidth = Styles.onboardingSize.width - Styles.windowPadding * 2
 
-            // Make the card fill width
-            card.translatesAutoresizingMaskIntoConstraints = false
-            card.widthAnchor.constraint(equalToConstant: Styles.onboardingSize.width - Styles.windowPadding * 2).isActive = true
+        for (id, icon, name, desc) in modules {
+            // Toggle for this module
+            let toggle = NSSwitch()
+            toggle.state = moduleToggles[id] == true ? .on : .off
+            toggle.target = self
+            toggle.action = #selector(moduleToggled(_:))
+            toggle.controlSize = .small
+            let tagMap = ["search": 0, "shopping": 1, "video": 2, "news": 3]
+            toggle.tag = 900 + (tagMap[id] ?? 0)
+
+            let card = Styles.moduleInfoCard(
+                icon: icon, title: name, description: desc,
+                trailingView: toggle, width: cardWidth
+            )
+            stack.addArrangedSubview(card)
         }
 
         return stack
-    }
-
-    private func makeModuleCard(id: String, icon: String, name: String, description: String) -> NSView {
-        // Use a plain NSView with a background layer as the card container.
-        // NSBox.contentView replacement doesn't propagate intrinsic size properly.
-        let card = NSView()
-        card.wantsLayer = true
-        card.layer?.backgroundColor = Styles.cardBackground.cgColor
-        card.layer?.cornerRadius = Styles.cardCornerRadius
-        card.layer?.borderWidth = 0.5
-        card.layer?.borderColor = Styles.separator.withAlphaComponent(0.3).cgColor
-
-        // Icon (fixed size)
-        let iconView = NSImageView()
-        if let img = NSImage(systemSymbolName: icon, accessibilityDescription: name) {
-            let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-            iconView.image = img.withSymbolConfiguration(config)
-            iconView.contentTintColor = Styles.accentColor
-        }
-        iconView.translatesAutoresizingMaskIntoConstraints = false
-        iconView.setContentHuggingPriority(.required, for: .horizontal)
-
-        // Text column: name + description stacked vertically
-        let nameLabel = Styles.label(name, font: Styles.headlineFont)
-        nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        let descLabel = Styles.label(description, font: Styles.captionFont, color: Styles.secondaryLabel)
-        descLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-
-        let textStack = NSStackView(views: [nameLabel, descLabel])
-        textStack.orientation = .vertical
-        textStack.alignment = .leading
-        textStack.spacing = 2
-
-        // Toggle (fixed size)
-        let toggle = NSSwitch()
-        toggle.state = moduleToggles[id] == true ? .on : .off
-        toggle.target = self
-        toggle.action = #selector(moduleToggled(_:))
-        toggle.controlSize = .small
-        toggle.setContentHuggingPriority(.required, for: .horizontal)
-
-        let tagMap = ["search": 0, "shopping": 1, "video": 2, "news": 3]
-        toggle.tag = 900 + (tagMap[id] ?? 0)
-
-        // Horizontal row: icon | text | toggle
-        let row = NSStackView(views: [iconView, textStack, toggle])
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 12
-        row.translatesAutoresizingMaskIntoConstraints = false
-        row.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
-
-        card.addSubview(row)
-
-        NSLayoutConstraint.activate([
-            row.topAnchor.constraint(equalTo: card.topAnchor),
-            row.leadingAnchor.constraint(equalTo: card.leadingAnchor),
-            row.trailingAnchor.constraint(equalTo: card.trailingAnchor),
-            row.bottomAnchor.constraint(equalTo: card.bottomAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 24),
-        ])
-
-        return card
     }
 
     @objc private func moduleToggled(_ sender: NSSwitch) {
@@ -336,7 +298,7 @@ class OnboardingWindowController: NSWindowController {
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 12
+        stack.spacing = Styles.sectionSpacing
 
         let title = Styles.label("Activity Level", font: Styles.titleFont)
         stack.addArrangedSubview(title)
@@ -364,17 +326,21 @@ class OnboardingWindowController: NSWindowController {
     private func makeActivityCard(level: AppSettings.ActivityLevel) -> NSView {
         let isSelected = level == activityLevel
 
-        // Card background
-        let card = NSView()
-        card.wantsLayer = true
-        card.layer?.cornerRadius = Styles.cardCornerRadius
-        card.layer?.borderWidth = isSelected ? 2 : 0.5
-        card.layer?.borderColor = isSelected
-            ? Styles.accentColor.cgColor
-            : Styles.separator.withAlphaComponent(0.3).cgColor
-        card.layer?.backgroundColor = Styles.cardBackground.cgColor
+        // Card background — NSBox handles dark mode color changes automatically
+        let card = NSBox()
+        card.boxType = .custom
+        card.cornerRadius = Styles.cardCornerRadius
+        card.borderWidth = isSelected ? 2 : 0.5
+        card.borderColor = isSelected
+            ? Styles.accentColor
+            : Styles.separator.withAlphaComponent(0.3)
+        card.fillColor = Styles.cardBackground
+        card.titlePosition = .noTitle
+        card.contentViewMargins = .zero
 
-        // Click gesture
+        guard let content = card.contentView else { return card }
+
+        // Click gesture — accessible as a radio button for VoiceOver
         let clickButton = NSButton()
         clickButton.translatesAutoresizingMaskIntoConstraints = false
         clickButton.isBordered = false
@@ -383,7 +349,10 @@ class OnboardingWindowController: NSWindowController {
         clickButton.action = #selector(activityCardClicked(_:))
         let tagMap: [AppSettings.ActivityLevel: Int] = [.low: 950, .medium: 951, .high: 952]
         clickButton.tag = tagMap[level] ?? 950
-        card.addSubview(clickButton)
+        clickButton.setAccessibilityRole(.radioButton)
+        clickButton.setAccessibilityLabel("\(level.displayName) — \(level.sessionsPerHour)")
+        clickButton.setAccessibilityValue(isSelected ? "1" : "0")
+        content.addSubview(clickButton)
 
         // Name + sessions/hour on the same line
         let nameLabel = Styles.label(level.displayName, font: Styles.headlineFont)
@@ -411,28 +380,34 @@ class OnboardingWindowController: NSWindowController {
         if let img = NSImage(systemSymbolName: symbolName, accessibilityDescription: isSelected ? "Selected" : "Not selected") {
             let config = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)
             checkmark.image = img.withSymbolConfiguration(config)
-            checkmark.contentTintColor = isSelected ? Styles.accentColor : Styles.tertiaryLabel
+            checkmark.contentTintColor = isSelected ? Styles.accentColor : Styles.secondaryLabel
         }
         checkmark.setContentHuggingPriority(.required, for: .horizontal)
 
+        // Spacer pushes checkmark to right edge
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        textStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
         // Row layout
-        let row = NSStackView(views: [textStack, checkmark])
+        let row = NSStackView(views: [textStack, spacer, checkmark])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 12
         row.translatesAutoresizingMaskIntoConstraints = false
         row.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
-        card.addSubview(row)
+        content.addSubview(row)
 
         NSLayoutConstraint.activate([
-            clickButton.topAnchor.constraint(equalTo: card.topAnchor),
-            clickButton.leadingAnchor.constraint(equalTo: card.leadingAnchor),
-            clickButton.trailingAnchor.constraint(equalTo: card.trailingAnchor),
-            clickButton.bottomAnchor.constraint(equalTo: card.bottomAnchor),
-            row.topAnchor.constraint(equalTo: card.topAnchor),
-            row.leadingAnchor.constraint(equalTo: card.leadingAnchor),
-            row.trailingAnchor.constraint(equalTo: card.trailingAnchor),
-            row.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+            clickButton.topAnchor.constraint(equalTo: content.topAnchor),
+            clickButton.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            clickButton.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            clickButton.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            row.topAnchor.constraint(equalTo: content.topAnchor),
+            row.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            row.bottomAnchor.constraint(equalTo: content.bottomAnchor),
         ])
 
         return card
@@ -458,7 +433,7 @@ class OnboardingWindowController: NSWindowController {
         // Icon
         let iconView = NSImageView()
         if let img = NSImage(systemSymbolName: "person.text.rectangle", accessibilityDescription: nil) {
-            let config = NSImage.SymbolConfiguration(pointSize: 56, weight: .light)
+            let config = NSImage.SymbolConfiguration(pointSize: Styles.heroIconSize, weight: .light)
             iconView.image = img.withSymbolConfiguration(config)
             iconView.contentTintColor = Styles.accentColor
         }
@@ -505,7 +480,7 @@ class OnboardingWindowController: NSWindowController {
         // Icon
         let iconView = NSImageView()
         if let img = NSImage(systemSymbolName: "checkmark.seal.fill", accessibilityDescription: nil) {
-            let config = NSImage.SymbolConfiguration(pointSize: 56, weight: .light)
+            let config = NSImage.SymbolConfiguration(pointSize: Styles.heroIconSize, weight: .light)
             iconView.image = img.withSymbolConfiguration(config)
             iconView.contentTintColor = NSColor.systemGreen
         }
