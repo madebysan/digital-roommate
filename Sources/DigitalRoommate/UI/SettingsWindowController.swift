@@ -131,7 +131,7 @@ class SettingsWindowController: NSWindowController, NSTextViewDelegate {
         contentScrollView.automaticallyAdjustsContentInsets = false
         contentScrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
 
-        contentDocumentView = NSView()
+        contentDocumentView = FlippedView()
         contentDocumentView.translatesAutoresizingMaskIntoConstraints = false
         contentScrollView.documentView = contentDocumentView
 
@@ -200,8 +200,9 @@ class SettingsWindowController: NSWindowController, NSTextViewDelegate {
             contentStack.widthAnchor.constraint(equalToConstant: contentWidth - padding * 2),
         ])
 
-        // Scroll to top
-        contentScrollView.documentView?.scroll(.zero)
+        // Scroll to top (flipped view: origin is top-left)
+        contentScrollView.contentView.scroll(to: .zero)
+        contentScrollView.reflectScrolledClipView(contentScrollView.contentView)
     }
 
     // MARK: - General Section
@@ -218,18 +219,28 @@ class SettingsWindowController: NSWindowController, NSTextViewDelegate {
         let title = Styles.label("General", font: Styles.titleFont)
         stack.addArrangedSubview(title)
 
-        // --- Activity Level ---
+        // --- Activity Level (wrapped in card) ---
         let activityLabel = Styles.sectionHeader("Activity Level")
+        stack.addArrangedSubview(activityLabel)
+
         let activitySegment = NSSegmentedControl(labels: ["Low", "Medium", "High"], trackingMode: .selectOne, target: self, action: #selector(activityLevelChanged(_:)))
         activitySegment.selectedSegment = AppSettings.ActivityLevel.allCases.firstIndex(of: settings.activityLevel) ?? 1
         activitySegment.segmentDistribution = .fillEqually
         activitySegment.tag = 100
 
-        let activityStack = NSStackView(views: [activityLabel, activitySegment])
-        activityStack.orientation = .vertical
-        activityStack.alignment = .leading
-        activityStack.spacing = Styles.itemSpacing
-        stack.addArrangedSubview(activityStack)
+        let segmentRow = NSView()
+        segmentRow.translatesAutoresizingMaskIntoConstraints = false
+        activitySegment.translatesAutoresizingMaskIntoConstraints = false
+        segmentRow.addSubview(activitySegment)
+        NSLayoutConstraint.activate([
+            segmentRow.heightAnchor.constraint(equalToConstant: 44),
+            activitySegment.leadingAnchor.constraint(equalTo: segmentRow.leadingAnchor, constant: Styles.cardPadding),
+            activitySegment.trailingAnchor.constraint(equalTo: segmentRow.trailingAnchor, constant: -Styles.cardPadding),
+            activitySegment.centerYAnchor.constraint(equalTo: segmentRow.centerYAnchor),
+        ])
+
+        let activityCard = Styles.settingsCard([segmentRow])
+        stack.addArrangedSubview(activityCard)
 
         // --- Active Time Blocks (card with toggle rows) ---
         let timeLabel = Styles.sectionHeader("Active Time Blocks")
@@ -571,6 +582,17 @@ class SettingsWindowController: NSWindowController, NSTextViewDelegate {
         let title = Styles.label("Persona", font: Styles.titleFont)
         stack.addArrangedSubview(title)
 
+        // --- Intro card explaining what the persona does ---
+        let introCard = Styles.moduleInfoCard(
+            icon: "theatermasks",
+            title: "What is a Persona?",
+            description: "A persona is a fake identity that shapes all decoy traffic. " +
+                "Its interests, shopping habits, and video tastes determine what your " +
+                "roommate searches for, watches, and buys \u{2014} making the noise look " +
+                "like a real person, not random data."
+        )
+        stack.addArrangedSubview(introCard)
+
         // --- Persona Picker ---
         Persona.ensureDefaultExists()
         let pickerLabel = Styles.sectionHeader("Active Persona")
@@ -608,9 +630,15 @@ class SettingsWindowController: NSWindowController, NSTextViewDelegate {
 
         // --- Interests ---
         let interestsHeader = Styles.sectionHeader("Interests")
-        let interestsDesc = Styles.label("One per line. Shapes search and browsing behavior.", font: Styles.captionFont, color: Styles.secondaryLabel)
+        let interestsDesc = Styles.label(
+            "These shape your roommate\u{2019}s overall browsing behavior \u{2014} what they search for, " +
+            "which articles they click, and what topics they gravitate toward. Add interests that are " +
+            "different from your real ones for better privacy coverage. One per line.",
+            font: Styles.captionFont, color: Styles.secondaryLabel
+        )
         let (interestsScroll, interestsTV) = makeEditableTextArea(
-            content: persona.interests.joined(separator: "\n"), height: 70
+            content: persona.interests.joined(separator: "\n"), height: 70,
+            placeholder: "e.g. cooking, hiking, photography"
         )
         stack.addArrangedSubview(interestsHeader)
         stack.addArrangedSubview(interestsDesc)
@@ -618,7 +646,12 @@ class SettingsWindowController: NSWindowController, NSTextViewDelegate {
 
         // --- Search Topics ---
         let searchHeader = Styles.sectionHeader("Search Topics")
-        let searchDesc = Styles.label("What your roommate searches for. Each topic has a category and a list of search items.", font: Styles.captionFont, color: Styles.secondaryLabel)
+        let searchDesc = Styles.label(
+            "Each topic combines a category name with specific search items to create natural-sounding " +
+            "queries (e.g. \"best cast iron skillet for beginners\"). The category provides context, " +
+            "while items are the actual things searched for.",
+            font: Styles.captionFont, color: Styles.secondaryLabel
+        )
         stack.addArrangedSubview(searchHeader)
         stack.addArrangedSubview(searchDesc)
 
@@ -649,14 +682,19 @@ class SettingsWindowController: NSWindowController, NSTextViewDelegate {
             if i < persona.searchTopics.count - 1 {
                 let gap = NSView()
                 gap.translatesAutoresizingMaskIntoConstraints = false
-                gap.heightAnchor.constraint(equalToConstant: 4).isActive = true
+                gap.heightAnchor.constraint(equalToConstant: Styles.sectionSpacing).isActive = true
                 stack.addArrangedSubview(gap)
             }
         }
 
         // --- Shopping ---
         let shoppingHeader = Styles.sectionHeader("Shopping")
-        let shoppingDesc = Styles.label("Products your roommate browses on Amazon.", font: Styles.captionFont, color: Styles.secondaryLabel)
+        let shoppingDesc = Styles.label(
+            "These create Amazon browsing trails \u{2014} your roommate searches for products, views pages, " +
+            "scrolls through images, and reads reviews. Each category has a name and a list of search terms " +
+            "that get typed into Amazon\u{2019}s search bar.",
+            font: Styles.captionFont, color: Styles.secondaryLabel
+        )
         stack.addArrangedSubview(shoppingHeader)
         stack.addArrangedSubview(shoppingDesc)
 
@@ -687,7 +725,12 @@ class SettingsWindowController: NSWindowController, NSTextViewDelegate {
 
         // --- Video ---
         let videoHeader = Styles.sectionHeader("Video")
-        let videoDesc = Styles.label("What your roommate watches on YouTube.", font: Styles.captionFont, color: Styles.secondaryLabel)
+        let videoDesc = Styles.label(
+            "These drive YouTube watching patterns \u{2014} your roommate searches for videos, watches them " +
+            "muted at variable durations, and skips ads automatically. Each topic has a name and search " +
+            "queries used to find videos on YouTube.",
+            font: Styles.captionFont, color: Styles.secondaryLabel
+        )
         stack.addArrangedSubview(videoHeader)
         stack.addArrangedSubview(videoDesc)
 
@@ -720,9 +763,7 @@ class SettingsWindowController: NSWindowController, NSTextViewDelegate {
         }
 
         // --- Save ---
-        let saveButton = NSButton(title: "Save Changes", target: self, action: #selector(savePersona(_:)))
-        saveButton.bezelStyle = .rounded
-        saveButton.keyEquivalent = "\r"
+        let saveButton = Styles.accentButton("Save Changes", target: self, action: #selector(savePersona(_:)))
 
         let openButton = NSButton(title: "Open Persona File\u{2026}", target: self, action: #selector(openPersonaFile(_:)))
         openButton.bezelStyle = .rounded
@@ -748,8 +789,10 @@ class SettingsWindowController: NSWindowController, NSTextViewDelegate {
 
     // MARK: - Helpers
 
-    /// Creates a scrollable editable text area (reusable across sections)
-    private func makeEditableTextArea(content: String, height: CGFloat) -> (NSScrollView, NSTextView) {
+    /// Creates a scrollable editable text area (reusable across sections).
+    /// Placeholder text is shown via the text view's native placeholderString
+    /// pattern — it won't be saved as actual data.
+    private func makeEditableTextArea(content: String, height: CGFloat, placeholder: String? = nil) -> (NSScrollView, NSTextView) {
         let scrollView = NSScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.hasVerticalScroller = true
@@ -765,6 +808,24 @@ class SettingsWindowController: NSWindowController, NSTextViewDelegate {
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
         scrollView.documentView = textView
+
+        // Show placeholder as an overlay label that doesn't interfere with data
+        if let placeholder = placeholder, content.isEmpty {
+            let placeholderLabel = NSTextField(labelWithString: placeholder)
+            placeholderLabel.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+            placeholderLabel.textColor = Styles.tertiaryLabel
+            placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
+            placeholderLabel.isEditable = false
+            placeholderLabel.isBordered = false
+            placeholderLabel.drawsBackground = false
+            scrollView.addSubview(placeholderLabel)
+            NSLayoutConstraint.activate([
+                placeholderLabel.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: 4),
+                placeholderLabel.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor, constant: 6),
+            ])
+            // Tag the label so we can remove it when the user starts typing
+            placeholderLabel.tag = 9999
+        }
 
         let contentWidth = Styles.settingsSize.width - Styles.sidebarWidth - 1 - Styles.windowPadding * 2
         NSLayoutConstraint.activate([
@@ -852,6 +913,15 @@ class SettingsWindowController: NSWindowController, NSTextViewDelegate {
     }
 
     // MARK: - Sites & Privacy — Auto-save on blur
+
+    func textDidChange(_ notification: Notification) {
+        // Hide placeholder overlay when user starts typing
+        guard let textView = notification.object as? NSTextView,
+              let scrollView = textView.enclosingScrollView else { return }
+        if let placeholder = scrollView.subviews.first(where: { $0.tag == 9999 }) {
+            placeholder.isHidden = !textView.string.isEmpty
+        }
+    }
 
     func textDidEndEditing(_ notification: Notification) {
         guard let textView = notification.object as? NSTextView else { return }
@@ -977,10 +1047,16 @@ class SettingsWindowController: NSWindowController, NSTextViewDelegate {
 
         Persona.save(newPersona, named: activeName)
 
-        // Visual feedback
-        sender.title = "Saved!"
+        // Visual confirmation — brief "Saved!" with green tint, then revert
+        sender.title = "\u{2713} Saved"
+        sender.contentTintColor = .systemGreen
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            context.allowsImplicitAnimation = true
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             sender.title = "Save Changes"
+            sender.contentTintColor = nil
         }
     }
 
@@ -1036,7 +1112,7 @@ extension SettingsWindowController: NSTableViewDataSource, NSTableViewDelegate {
         let section = sections[row]
         cell.textField?.stringValue = section.name
         if let img = NSImage(systemSymbolName: section.icon, accessibilityDescription: section.name) {
-            let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+            let config = NSImage.SymbolConfiguration(pointSize: Styles.sidebarIconSize, weight: .regular)
             cell.imageView?.image = img.withSymbolConfiguration(config)
             cell.imageView?.contentTintColor = .secondaryLabelColor
         }

@@ -29,11 +29,14 @@ class ShoppingNoiseModule: BrowsingModule {
         // Pick a random shopping category for this session
         let category = persona.shoppingCategories.randomElement()!
 
+        // Filter product URLs through the blocked domains list
+        let allowedProductUrls = category.productUrls.filter { !settings.isDomainBlocked($0) }
+
         // Decide session type: search-based or direct product URL
-        if !category.productUrls.isEmpty && Double.random(in: 0...1) < 0.3 {
+        if !allowedProductUrls.isEmpty && Double.random(in: 0...1) < 0.3 {
             // 30% chance: go directly to a product page
-            await browseProductPage(webView: webView, url: category.productUrls.randomElement()!)
-        } else {
+            await browseProductPage(webView: webView, url: allowedProductUrls.randomElement()!)
+        } else if !settings.isDomainBlocked("https://www.amazon.com") {
             // 70% chance: search Amazon and browse results
             await searchAndBrowse(webView: webView, category: category)
         }

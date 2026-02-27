@@ -1,15 +1,13 @@
 import Cocoa
-import WebKit
 
 // "About Digital Roommate" window.
-// Shows a styled HTML page in a WKWebView explaining what the app does,
-// how each module works, and how to customize the persona JSON.
+// Native AppKit layout showing what the app does, how each module works,
+// and how to customize the persona. Uses shared Styles helpers for
+// consistency with Settings and Onboarding windows.
 // Singleton — calling show() again brings the existing window to front.
 class HelpWindowController: NSWindowController {
 
     static let shared = HelpWindowController()
-
-    private var webView: WKWebView!
 
     private init() {
         let window = NSWindow(
@@ -21,11 +19,10 @@ class HelpWindowController: NSWindowController {
         window.title = "About Digital Roommate"
         window.center()
         window.isReleasedWhenClosed = false
-        window.level = .floating
 
         super.init(window: window)
 
-        setupWebView()
+        setupContent()
     }
 
     @available(*, unavailable)
@@ -36,7 +33,6 @@ class HelpWindowController: NSWindowController {
     // MARK: - Public
 
     func show() {
-        webView.loadHTMLString(helpHTML(), baseURL: nil)
         window?.center()
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -44,138 +40,211 @@ class HelpWindowController: NSWindowController {
 
     // MARK: - Setup
 
-    private func setupWebView() {
-        let config = WKWebViewConfiguration()
-        config.preferences.isElementFullscreenEnabled = false
-        webView = WKWebView(frame: .zero, configuration: config)
-        webView.translatesAutoresizingMaskIntoConstraints = false
-        window?.contentView = webView
+    private func setupContent() {
+        guard let contentView = window?.contentView else { return }
+
+        // Scroll view wrapping the full content
+        let scrollView = NSScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.hasVerticalScroller = true
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+
+        let documentView = FlippedView()
+        documentView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.documentView = documentView
+        contentView.addSubview(scrollView)
+
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            documentView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
+            documentView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+            documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+        ])
+
+        // Main content stack
+        let stack = buildContentStack()
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        documentView.addSubview(stack)
+
+        let padding = Styles.windowPadding
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: documentView.topAnchor, constant: padding),
+            stack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: padding),
+            stack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -padding),
+            stack.bottomAnchor.constraint(equalTo: documentView.bottomAnchor, constant: -padding),
+        ])
     }
 
-    // MARK: - HTML Content
+    // MARK: - Content
 
-    private func helpHTML() -> String {
-        return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <meta charset="utf-8">
-        <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-                font-size: 13px;
-                line-height: 1.6;
-                color: #1d1d1f;
-                padding: 28px 32px;
-                background: #ffffff;
-                -webkit-font-smoothing: antialiased;
-            }
-            @media (prefers-color-scheme: dark) {
-                body { background: #1e1e1e; color: #f5f5f7; }
-                .module-card { background: #2a2a2a; border-color: #3a3a3a; }
-                code { background: #2a2a2a; }
-                .section-divider { border-color: #3a3a3a; }
-            }
-            h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
-            .subtitle { color: #86868b; font-size: 13px; margin-bottom: 20px; }
-            h2 { font-size: 15px; font-weight: 600; margin: 20px 0 8px; }
-            p { margin-bottom: 10px; }
-            .module-card {
-                background: #f5f5f7;
-                border: 1px solid #e5e5e5;
-                border-radius: 8px;
-                padding: 12px 14px;
-                margin-bottom: 8px;
-            }
-            .module-name { font-weight: 600; font-size: 13px; }
-            .module-desc { color: #6e6e73; font-size: 12px; margin-top: 2px; }
-            code {
-                font-family: SF Mono, Menlo, monospace;
-                font-size: 11px;
-                background: #f5f5f7;
-                padding: 2px 6px;
-                border-radius: 4px;
-            }
-            .section-divider {
-                border: none;
-                border-top: 1px solid #e5e5e5;
-                margin: 20px 0;
-            }
-            ul { padding-left: 20px; margin-bottom: 10px; }
-            li { margin-bottom: 4px; }
-        </style>
-        </head>
-        <body>
-            <h1>Digital Roommate</h1>
-            <p class="subtitle">Privacy noise generator for macOS</p>
+    private func buildContentStack() -> NSStackView {
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = Styles.sectionSpacing
 
-            <p>Digital Roommate creates realistic web traffic from a fake persona, making it look like
-            another person lives in your house. This poisons ISP-level and data-broker profiling by
-            mixing your real browsing with convincing decoy activity.</p>
+        let cardWidth = Styles.helpSize.width - Styles.windowPadding * 2
 
-            <hr class="section-divider">
+        // --- Header (tight group: icon / title / subtitle / version) ---
+        let iconView = NSImageView()
+        if let img = NSImage(systemSymbolName: "person.fill.viewfinder", accessibilityDescription: nil) {
+            let config = NSImage.SymbolConfiguration(pointSize: Styles.heroIconSize, weight: .light)
+            iconView.image = img.withSymbolConfiguration(config)
+            iconView.contentTintColor = Styles.accentColor
+        }
 
-            <h2>How It Works</h2>
-            <p>The app runs hidden browser sessions in the background using time-aware scheduling.
-            Activity levels vary throughout the day just like a real person \u{2014} more active in the
-            afternoon, quieter late at night.</p>
+        let title = Styles.label("Digital Roommate", font: Styles.titleFont)
+        let subtitle = Styles.label("Privacy noise generator for macOS", font: Styles.bodyFont, color: Styles.secondaryLabel)
 
-            <hr class="section-divider">
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        let versionLabel = Styles.label("Version \(version) (\(build))", font: Styles.captionFont, color: Styles.tertiaryLabel)
 
-            <h2>Modules</h2>
+        let headerGroup = NSStackView(views: [iconView, title, subtitle, versionLabel])
+        headerGroup.orientation = .vertical
+        headerGroup.alignment = .leading
+        headerGroup.spacing = Styles.headerGroupSpacing
+        // A bit more space below the icon before the text
+        headerGroup.setCustomSpacing(Styles.itemSpacing, after: iconView)
+        stack.addArrangedSubview(headerGroup)
 
-            <div class="module-card">
-                <div class="module-name">\u{1F50D} Search Noise</div>
-                <div class="module-desc">Runs searches on Google, Bing, and DuckDuckGo using your persona's
-                interests. Sometimes does multi-query research bursts. Clicks through to results to
-                create realistic browsing trails.</div>
-            </div>
+        let intro = Styles.label(
+            "Digital Roommate creates realistic web traffic from a fake persona, making it look like " +
+            "another person lives in your house. This poisons ISP-level and data-broker profiling by " +
+            "mixing your real browsing with convincing decoy activity.",
+            font: Styles.bodyFont
+        )
+        stack.addArrangedSubview(intro)
 
-            <div class="module-card">
-                <div class="module-name">\u{1F6D2} Shopping Noise</div>
-                <div class="module-desc">Browses Amazon \u{2014} searches for products, views product pages,
-                scrolls through images and reviews. Creates the impression of an active online shopper.</div>
-            </div>
+        // --- Divider ---
+        stack.addArrangedSubview(makeDivider(width: cardWidth))
 
-            <div class="module-card">
-                <div class="module-name">\u{25B6}\u{FE0F} Video Noise</div>
-                <div class="module-desc">Watches YouTube videos from your persona's interests. Plays muted,
-                watches variable durations (30\u{2013}90% of each video), and skips ads automatically.</div>
-            </div>
+        // --- How It Works ---
+        let howHeader = Styles.label("How It Works", font: Styles.headlineFont)
+        stack.addArrangedSubview(howHeader)
 
-            <div class="module-card">
-                <div class="module-name">\u{1F4F0} News & Browsing</div>
-                <div class="module-desc">Visits news sites, reads articles at realistic speed, and occasionally
-                follows related links. Covers general, tech, hobby, and professional sites.</div>
-            </div>
+        let howBody = Styles.label(
+            "The app runs hidden browser sessions in the background using time-aware scheduling. " +
+            "Activity levels vary throughout the day just like a real person \u{2014} more active in the " +
+            "afternoon, quieter late at night.",
+            font: Styles.bodyFont,
+            color: Styles.secondaryLabel
+        )
+        stack.addArrangedSubview(howBody)
 
-            <hr class="section-divider">
+        // --- Divider ---
+        stack.addArrangedSubview(makeDivider(width: cardWidth))
 
-            <h2>Customizing the Persona</h2>
-            <p>The fake persona (name, interests, shopping habits, video topics) defines
-            what kind of person your traffic looks like. To customize it:</p>
-            <ul>
-                <li>Open <strong>Settings &rarr; Persona</strong></li>
-                <li>Edit the name, interests, search topics, shopping terms, and video queries</li>
-                <li>Click <strong>Save Changes</strong> \u{2014} takes effect on the next browsing session</li>
-            </ul>
-            <p>Use <strong>Settings &rarr; Sites &amp; Privacy</strong> to see which sites the roommate visits and block specific domains.</p>
+        // --- Modules ---
+        let modulesHeader = Styles.label("Modules", font: Styles.headlineFont)
+        stack.addArrangedSubview(modulesHeader)
 
-            <hr class="section-divider">
+        let modules: [(String, String, String)] = [
+            ("magnifyingglass", "Search Noise",
+             "Runs searches on Google, Bing, and DuckDuckGo using your persona\u{2019}s interests. " +
+             "Sometimes does multi-query research bursts. Clicks through to results to create realistic browsing trails."),
+            ("cart", "Shopping Noise",
+             "Browses Amazon \u{2014} searches for products, views product pages, scrolls through images and reviews. " +
+             "Creates the impression of an active online shopper."),
+            ("play.rectangle", "Video Noise",
+             "Watches YouTube videos from your persona\u{2019}s interests. Plays muted, watches variable durations " +
+             "(30\u{2013}90% of each video), and skips ads automatically."),
+            ("newspaper", "News & Browsing",
+             "Visits news sites, reads articles at realistic speed, and occasionally follows related links. " +
+             "Covers general, tech, hobby, and professional sites."),
+        ]
 
-            <h2>Settings</h2>
-            <p>Use <strong>Settings</strong> (in the menu bar dropdown) to control activity level,
-            active time blocks, and per-module options like which search engines to use, video
-            watch duration, and more.</p>
+        for (icon, name, desc) in modules {
+            let card = Styles.moduleInfoCard(icon: icon, title: name, description: desc, width: cardWidth)
+            stack.addArrangedSubview(card)
+        }
 
-            <hr class="section-divider">
+        // --- Divider ---
+        stack.addArrangedSubview(makeDivider(width: cardWidth))
 
-            <p style="color: #86868b; font-size: 11px; margin-top: 16px;">
-                Digital Roommate \u{2014} Your data is your own.
-            </p>
-        </body>
-        </html>
-        """
+        // --- Customizing the Persona ---
+        let personaHeader = Styles.label("Customizing the Persona", font: Styles.headlineFont)
+        stack.addArrangedSubview(personaHeader)
+
+        let personaIntro = Styles.label(
+            "The fake persona (name, interests, shopping habits, video topics) defines what kind of person " +
+            "your traffic looks like. To customize it:",
+            font: Styles.bodyFont,
+            color: Styles.secondaryLabel
+        )
+        stack.addArrangedSubview(personaIntro)
+
+        let bullets = [
+            "Open Settings \u{2192} Persona",
+            "Edit the name, interests, search topics, shopping terms, and video queries",
+            "Click Save Changes \u{2014} takes effect on the next browsing session",
+        ]
+        for bullet in bullets {
+            let bulletLabel = Styles.label("\u{2022}  \(bullet)", font: Styles.bodyFont, color: Styles.secondaryLabel)
+            stack.addArrangedSubview(bulletLabel)
+        }
+
+        let sitesNote = Styles.label(
+            "Use Settings \u{2192} Sites & Privacy to see which sites the roommate visits and block specific domains.",
+            font: Styles.bodyFont,
+            color: Styles.secondaryLabel
+        )
+        stack.addArrangedSubview(sitesNote)
+
+        // --- Divider ---
+        stack.addArrangedSubview(makeDivider(width: cardWidth))
+
+        // --- Settings ---
+        let settingsHeader = Styles.label("Settings", font: Styles.headlineFont)
+        stack.addArrangedSubview(settingsHeader)
+
+        let settingsBody = Styles.label(
+            "Use Settings (in the menu bar dropdown) to control activity level, active time blocks, " +
+            "and per-module options like which search engines to use, video watch duration, and more.",
+            font: Styles.bodyFont,
+            color: Styles.secondaryLabel
+        )
+        stack.addArrangedSubview(settingsBody)
+
+        // --- Divider ---
+        stack.addArrangedSubview(makeDivider(width: cardWidth))
+
+        // --- Footer ---
+        let footer = Styles.label(
+            "Digital Roommate \u{2014} Your data is your own.",
+            font: Styles.captionFont,
+            color: Styles.tertiaryLabel
+        )
+        stack.addArrangedSubview(footer)
+
+        return stack
+    }
+
+    // MARK: - Helpers
+
+    private func makeDivider(width: CGFloat) -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let line = NSBox()
+        line.boxType = .separator
+        line.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(line)
+
+        NSLayoutConstraint.activate([
+            container.heightAnchor.constraint(equalToConstant: 1),
+            container.widthAnchor.constraint(equalToConstant: width),
+            line.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            line.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            line.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+        ])
+
+        return container
     }
 }

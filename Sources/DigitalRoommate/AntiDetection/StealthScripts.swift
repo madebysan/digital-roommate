@@ -6,11 +6,14 @@ import Foundation
 // (not our goal) — just making the traffic look like a normal browser session.
 struct StealthScripts {
 
-    /// All stealth scripts combined, injected before any page JS runs
+    /// All stealth scripts combined, injected before any page JS runs.
+    /// WebGL normalization was removed — the hardcoded Intel Iris strings
+    /// were wrong on Apple Silicon Macs and created a more unique fingerprint
+    /// than the real GPU info. With Safari-only UAs, the real Apple GPU
+    /// string is expected and doesn't stand out.
     static let allScripts: [String] = [
         navigatorOverrides,
-        pageVisibilitySpoof,
-        webGLNormalization
+        pageVisibilitySpoof
     ]
 
     // Override navigator.webdriver (set to undefined in normal browsers)

@@ -49,6 +49,9 @@ class WebViewInstance: NSObject, WKNavigationDelegate {
 
     // MARK: - Public API
 
+    /// Allowed URL schemes — reject file://, javascript:, data:, etc.
+    private static let allowedSchemes: Set<String> = ["http", "https"]
+
     /// Load a URL and wait for the page to finish loading.
     /// Returns true if the page loaded successfully.
     /// Times out after 30 seconds to prevent hanging forever.
@@ -57,6 +60,26 @@ class WebViewInstance: NSObject, WKNavigationDelegate {
         guard let url = URL(string: urlString) else {
             ActivityLog.shared.log(module: moduleId, action: "Invalid URL", metadata: [
                 "url": urlString,
+            ])
+            return false
+        }
+
+        // Defense-in-depth: only allow http/https schemes.
+        // Prevents file://, javascript:, data: from malicious persona files.
+        guard let scheme = url.scheme?.lowercased(),
+              Self.allowedSchemes.contains(scheme) else {
+            ActivityLog.shared.log(module: moduleId, action: "Blocked URL scheme", metadata: [
+                "url": urlString,
+                "scheme": url.scheme ?? "none",
+            ])
+            return false
+        }
+
+        // Safety net: check blocked domains at the WebView level
+        if SettingsManager.shared.current.isDomainBlocked(urlString) {
+            ActivityLog.shared.log(module: moduleId, action: "Blocked domain", metadata: [
+                "url": urlString,
+                "host": url.host ?? "unknown",
             ])
             return false
         }

@@ -176,8 +176,14 @@ class NewsModule: BrowsingModule {
 
     /// Follow a related link from within an article (1 hop deep)
     private func followRelatedLink(webView: WebViewInstance) async {
+        // Build blocked domains array for JS filtering
+        let blocked = settings.blockedDomains
+            .map { "\"\($0.lowercased().trimmingCharacters(in: .whitespaces).jsEscaped)\"" }
+            .joined(separator: ",")
+
         let clickJS = """
         (function() {
+            var blocked = [\(blocked)];
             // Find in-article links (not nav, not social, not ads)
             var articleBody = document.querySelector('article, .article-body, .post-content, main');
             if (!articleBody) return 'none';
@@ -186,12 +192,13 @@ class NewsModule: BrowsingModule {
             var valid = Array.from(links).filter(function(a) {
                 var href = a.href || '';
                 var text = a.textContent.trim();
-                return href.startsWith('http') &&
-                       text.length > 5 &&
-                       !href.includes('twitter.com') &&
-                       !href.includes('facebook.com') &&
-                       !href.includes('instagram.com') &&
-                       !href.includes('#');
+                if (!href.startsWith('http') || text.length <= 5 || href.includes('#')) return false;
+                if (href.includes('twitter.com') || href.includes('facebook.com') || href.includes('instagram.com')) return false;
+                try {
+                    var host = new URL(href).hostname.toLowerCase();
+                    for (var b of blocked) { if (host === b || host.endsWith('.' + b)) return false; }
+                } catch(e) {}
+                return true;
             });
 
             if (valid.length > 0) {

@@ -9,8 +9,12 @@ extension String {
         result = result.replacingOccurrences(of: "\\", with: "\\\\")
         result = result.replacingOccurrences(of: "'", with: "\\'")
         result = result.replacingOccurrences(of: "\"", with: "\\\"")
+        result = result.replacingOccurrences(of: "`", with: "\\`")          // template literal delimiter
+        result = result.replacingOccurrences(of: "${", with: "\\${")        // template expression injection
         result = result.replacingOccurrences(of: "\n", with: "\\n")
         result = result.replacingOccurrences(of: "\r", with: "\\r")
+        result = result.replacingOccurrences(of: "\0", with: "\\0")         // null byte truncation
+        result = result.replacingOccurrences(of: "</script>", with: "<\\/script>")  // script breakout
         return result
     }
 }

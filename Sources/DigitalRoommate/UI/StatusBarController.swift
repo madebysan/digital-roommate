@@ -23,7 +23,7 @@ class StatusBarController {
         if let button = statusItem.button {
             // Use a person silhouette icon — looks like a "roommate"
             button.image = NSImage(systemSymbolName: "person.fill", accessibilityDescription: "Digital Roommate")
-            button.image?.size = NSSize(width: 16, height: 16)
+            button.image?.size = NSSize(width: Styles.statusBarIconSize, height: Styles.statusBarIconSize)
         }
 
         rebuildMenu()
@@ -52,6 +52,14 @@ class StatusBarController {
         modulesHeader.isEnabled = false
         menu.addItem(modulesHeader)
 
+        // Map module IDs to SF Symbol names for menu icons
+        let moduleIcons: [String: String] = [
+            "search": "magnifyingglass",
+            "shopping": "cart",
+            "video": "play.rectangle",
+            "news": "newspaper",
+        ]
+
         for module in registry.allModules {
             let item = NSMenuItem(
                 title: "\(module.displayName)",
@@ -61,6 +69,13 @@ class StatusBarController {
             item.target = self
             item.representedObject = module.id
             item.state = module.isEnabled ? .on : .off
+
+            // Add SF Symbol icon
+            if let iconName = moduleIcons[module.id],
+               let img = NSImage(systemSymbolName: iconName, accessibilityDescription: module.displayName) {
+                let config = NSImage.SymbolConfiguration(pointSize: Styles.sidebarIconSize, weight: .regular)
+                item.image = img.withSymbolConfiguration(config)
+            }
 
             // Show status as subtitle if active
             if module.isActive {
@@ -84,8 +99,9 @@ class StatusBarController {
 
         menu.addItem(.separator())
 
-        // About
+        // About & Onboarding
         menu.addItem(withTitle: "About Digital Roommate\u{2026}", action: #selector(openAbout), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Onboarding Guide\u{2026}", action: #selector(openOnboarding), keyEquivalent: "").target = self
 
         // Open activity log
         menu.addItem(withTitle: "Show Activity Log\u{2026}", action: #selector(showActivityLog), keyEquivalent: "l").target = self
@@ -148,6 +164,13 @@ class StatusBarController {
 
     @objc private func openAbout() {
         HelpWindowController.shared.show()
+    }
+
+    @objc private func openOnboarding() {
+        let onboarding = OnboardingWindowController()
+        onboarding.show()
+        // Keep a strong reference so the window stays alive
+        objc_setAssociatedObject(self, "onboarding", onboarding, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     }
 
     @objc private func showActivityLog() {

@@ -1,5 +1,12 @@
 import Cocoa
 
+// An NSView with a flipped (top-left) coordinate origin.
+// Required as the documentView of NSScrollView so content
+// starts at the top instead of floating at the bottom.
+class FlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+
 // Shared visual constants for all windows (Help, Settings, Onboarding).
 // Keeps the look consistent without repeating magic numbers.
 enum Styles {
@@ -28,12 +35,21 @@ enum Styles {
     static let itemSpacing: CGFloat = 8
     static let cardCornerRadius: CGFloat = 10
     static let cardPadding: CGFloat = 14
+    static let bottomBarPadding: CGFloat = 16
+    static let headerGroupSpacing: CGFloat = 4
+
+    // MARK: - Icon Sizes
+
+    static let heroIconSize: CGFloat = 56
+    static let cardIconSize: CGFloat = 20
+    static let sidebarIconSize: CGFloat = 13
+    static let statusBarIconSize: CGFloat = 16
 
     // MARK: - Window Sizes
 
     static let onboardingSize = NSSize(width: 560, height: 460)
     static let settingsSize = NSSize(width: 720, height: 560)
-    static let helpSize = NSSize(width: 520, height: 560)
+    static let helpSize = NSSize(width: 520, height: 720)
 
     // MARK: - Sidebar
 
@@ -53,9 +69,18 @@ enum Styles {
         return field
     }
 
-    /// Create a section header label.
+    /// Create a section header label — small, uppercase, tertiary color.
+    /// Matches the macOS System Settings wayfinding style: section headers
+    /// are structural markers, not content. Card titles (headlineFont) are
+    /// the prominent level.
     static func sectionHeader(_ text: String) -> NSTextField {
-        return label(text, font: headlineFont)
+        let field = label(text.uppercased(), font: smallBoldFont, color: tertiaryLabel)
+        // Extra letter spacing for the uppercase wayfinding style
+        if let attrStr = field.attributedStringValue.mutableCopy() as? NSMutableAttributedString {
+            attrStr.addAttribute(.kern, value: 0.8, range: NSRange(location: 0, length: attrStr.length))
+            field.attributedStringValue = attrStr
+        }
+        return field
     }
 
     /// Create a checkbox with the given title and initial state.
@@ -82,15 +107,17 @@ enum Styles {
     // MARK: - Settings Card Helpers
 
     /// A card wrapping a vertical stack of rows. Fills available width.
-    /// Uses a plain NSView with a layer background — NSBox.contentView replacement
-    /// doesn't propagate intrinsic size properly with auto layout.
+    /// Uses NSBox so fillColor and borderColor respond to appearance
+    /// changes (light/dark mode) automatically.
     static func settingsCard(_ rows: [NSView]) -> NSView {
-        let card = NSView()
-        card.wantsLayer = true
-        card.layer?.backgroundColor = cardBackground.cgColor
-        card.layer?.cornerRadius = cardCornerRadius
-        card.layer?.borderWidth = 0.5
-        card.layer?.borderColor = separator.withAlphaComponent(0.3).cgColor
+        let card = NSBox()
+        card.boxType = .custom
+        card.cornerRadius = cardCornerRadius
+        card.fillColor = cardBackground
+        card.borderColor = separator.withAlphaComponent(0.3)
+        card.borderWidth = 0.5
+        card.titlePosition = .noTitle
+        card.contentViewMargins = .zero
 
         let stack = NSStackView(views: rows)
         stack.orientation = .vertical
@@ -98,13 +125,15 @@ enum Styles {
         stack.spacing = 0
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        card.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: card.topAnchor),
-            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor),
-            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor),
-        ])
+        card.contentView?.addSubview(stack)
+        if let content = card.contentView {
+            NSLayoutConstraint.activate([
+                stack.topAnchor.constraint(equalTo: content.topAnchor),
+                stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+                stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+                stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            ])
+        }
 
         return card
     }
@@ -175,6 +204,101 @@ enum Styles {
         row.translatesAutoresizingMaskIntoConstraints = false
 
         return (row, toggle)
+    }
+
+    /// A reusable module info card: icon on the left, title + description in the middle,
+    /// and an optional trailing view (e.g. toggle) on the right. Used in Onboarding and Help.
+    /// Uses NSBox so fillColor/borderColor respond to dark mode automatically.
+    static func moduleInfoCard(
+        icon: String,
+        title: String,
+        description: String,
+        trailingView: NSView? = nil,
+        width: CGFloat? = nil
+    ) -> NSView {
+        let card = NSBox()
+        card.boxType = .custom
+        card.cornerRadius = cardCornerRadius
+        card.fillColor = cardBackground
+        card.borderColor = separator.withAlphaComponent(0.3)
+        card.borderWidth = 0.5
+        card.titlePosition = .noTitle
+        card.contentViewMargins = .zero
+
+        // Icon
+        let iconView = NSImageView()
+        if let img = NSImage(systemSymbolName: icon, accessibilityDescription: title) {
+            let config = NSImage.SymbolConfiguration(pointSize: cardIconSize, weight: .medium)
+            iconView.image = img.withSymbolConfiguration(config)
+            iconView.contentTintColor = accentColor
+        }
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.setContentHuggingPriority(.required, for: .horizontal)
+
+        // Text column
+        let nameLabel = label(title, font: headlineFont)
+        nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let descLabel = label(description, font: captionFont, color: secondaryLabel)
+        descLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        let textStack = NSStackView(views: [nameLabel, descLabel])
+        textStack.orientation = .vertical
+        textStack.alignment = .leading
+        textStack.spacing = 4
+        // Let the text column expand to fill, pushing trailing view to the right
+        textStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        textStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        // Row: icon | text | spacer | optional trailing view
+        var rowViews: [NSView] = [iconView, textStack]
+        if let trailing = trailingView {
+            trailing.setContentHuggingPriority(.required, for: .horizontal)
+            // Spacer pushes trailing view to the right edge
+            let spacer = NSView()
+            spacer.translatesAutoresizingMaskIntoConstraints = false
+            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            rowViews.append(spacer)
+            rowViews.append(trailing)
+        }
+
+        let row = NSStackView(views: rowViews)
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 12
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.edgeInsets = NSEdgeInsets(top: 12, left: cardPadding, bottom: 12, right: cardPadding)
+
+        // Add row to NSBox's contentView (not the box itself)
+        guard let content = card.contentView else { return card }
+        content.addSubview(row)
+
+        var constraints = [
+            row.topAnchor.constraint(equalTo: content.topAnchor),
+            row.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            row.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 28),
+        ]
+
+        if let w = width {
+            card.translatesAutoresizingMaskIntoConstraints = false
+            constraints.append(card.widthAnchor.constraint(equalToConstant: w))
+        }
+
+        NSLayoutConstraint.activate(constraints)
+        return card
+    }
+
+    /// A primary action button styled as the key equivalent (accent-tinted).
+    /// Uses the system's built-in button rendering so press/hover/disabled
+    /// states work correctly and appearance changes (Dark Mode, accent color)
+    /// update automatically.
+    static func accentButton(_ title: String, target: AnyObject?, action: Selector) -> NSButton {
+        let button = NSButton(title: title, target: target, action: action)
+        button.bezelStyle = .rounded
+        button.keyEquivalent = "\r"
+        button.controlSize = .large
+        return button
     }
 
     /// A row with a label on the left and an NSPopUpButton on the right.
