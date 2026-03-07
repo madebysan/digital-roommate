@@ -1,105 +1,111 @@
-# Digital Roommate
+<p align="center">
+  <img src="assets/app-icon.png" width="128" height="128" alt="Digital Roommate app icon">
+</p>
+<h1 align="center">Digital Roommate</h1>
+<p align="center">A macOS menu bar app that generates realistic web traffic from a fake persona<br>— poisoning ISP-level and data-broker profiling of your household.</p>
+<p align="center"><strong>v1.0</strong> · macOS 14+ · Apple Silicon & Intel</p>
+<p align="center"><a href="https://github.com/madebysan/digital-roommate/releases/latest"><strong>Download Digital Roommate</strong></a></p>
 
-A macOS menu bar app that generates realistic web traffic from a fake persona — poisoning ISP-level and data-broker profiling of your household.
+---
 
-## What It Does
+## Your ISP sees a second person. You stay invisible.
 
-Digital Roommate creates a "pattern of life" for a fictional person who shares your network. Your ISP and data brokers see traffic that looks like another person lives in your house, with different interests, different browsing habits, and different schedules.
+Digital Roommate creates a "pattern of life" for a fictional person who shares your network. Your ISP and data brokers see traffic that looks like another person lives in your house — with different interests, different browsing habits, and a different schedule.
 
-The app runs 4 browsing modules in hidden web views:
+This is **network-level obfuscation**, not website-level bot evasion. The goal is to make your household's aggregate traffic look like 2+ people, not to fool individual websites.
 
-| Module | What It Does |
+## Modules
+
+The app runs hidden browser sessions in the background using time-aware scheduling. Each module simulates a different aspect of daily browsing:
+
+| Module | What it does |
 |--------|-------------|
-| **Search Noise** | Generates fake searches on Google, Bing, and DuckDuckGo. Clicks through to results. |
-| **Shopping Noise** | Browses Amazon — searches products, views listings, scrolls through images and reviews. |
-| **Video Noise** | Plays muted YouTube videos, watches for realistic durations, skips ads. |
-| **News & Browsing** | Reads articles on news sites, follows links, browses professional and hobby content. |
+| **Search Noise** | Runs searches on Google, Bing, and DuckDuckGo using the persona's interests. Sometimes does multi-query research bursts. Clicks through to results to create realistic browsing trails. |
+| **Shopping Noise** | Browses Amazon — searches for products, views product pages, scrolls through images and reviews. Creates the impression of an active online shopper. |
+| **Video Noise** | Watches YouTube videos from the persona's interests. Plays muted, watches variable durations (30–90% of each video), and skips ads automatically. |
+| **News & Browsing** | Visits news sites, reads articles at realistic speed, and occasionally follows related links. Covers general, tech, hobby, and professional sites. |
 
 All traffic is driven by a configurable persona — a JSON file that defines the roommate's interests, profession, shopping habits, and schedule.
 
-## How It Works
+## How it works
 
-**Traffic Generation**
-- **Hidden WKWebViews** — Real WebKit browser engine with JavaScript execution, cookie persistence, and Safari user agents. Sites see normal browser traffic.
-- **Isolated cookie stores** — Each module gets its own persistent cookie store (via `WKWebsiteDataStore`). The search persona and shopping persona don't leak into each other.
-- **Anti-detection JS** — Spoofs `navigator.webdriver`, normalizes plugin arrays, and fakes the Page Visibility API (so YouTube doesn't pause).
+### Traffic generation
 
-**Scheduling**
-- **Poisson-distributed timing** — Activity intervals follow an exponential distribution (not fixed timers), which looks more natural.
-- **Time-of-day awareness** — More active during afternoon/evening, less at 3 AM. Includes "Vampire mode" for occasional late-night activity.
-- **Weekend/weekday variation** — Weekends have different activity patterns (later mornings, more browsing).
+- **Offscreen WKWebViews** — Real WebKit browser engine with JavaScript execution and cookie persistence. Web views are positioned offscreen (not destroyed between actions), so sites see normal browser behavior. Pool capped at 3 concurrent views by default.
+- **Isolated cookie stores** — Each module gets its own persistent `WKWebsiteDataStore` (keyed by module ID). The search persona and shopping persona don't leak into each other, and none of them touch your personal browser.
+- **Anti-detection JS** — Overrides `navigator.webdriver` to return `undefined`, normalizes plugin/MIME-type arrays to non-empty values, and spoofs the Page Visibility API so background tabs (YouTube) don't pause. WebGL fingerprint normalization is implemented but intentionally disabled — on Apple Silicon it was creating a *more* unique fingerprint than the default.
 
-**Security & Anti-Detection**
-- **Safari user agent rotation** — Each session gets a random Safari UA (17.x–18.x) matching WKWebView's TLS fingerprint for consistency.
-- **HTTPS-only** — App Transport Security enforced. No plaintext HTTP traffic that would leak full URL paths.
-- **Blocked domain enforcement** — Checked across all four modules and as a safety net at the WebView level. URL schemes are validated to reject `file://`, `javascript:`, and `data:` loads.
-- **Thread-safe logging** — Activity log writes are serialized via a dispatch queue to prevent data races when multiple modules run concurrently.
-- **JS injection hardening** — User-provided data (persona interests, blocked domains) is escaped for backticks, template literals, null bytes, and script breakout before injection into WebView JavaScript.
+### Scheduling
 
-## What It Doesn't Do
+- **Poisson-distributed timing** — Inter-activity delays use an exponential distribution (`-ln(U) × mean`), which produces the irregular spacing of real human browsing rather than fixed intervals.
+- **Time-of-day weighting** — Activity probability varies by time block (morning, afternoon, evening, late night). Includes a "Vampire mode" weight for occasional 2–5 AM activity.
+- **Weekend/weekday variation** — Weekends use different interval multipliers: later mornings, shifted activity peaks.
 
-This is **network-level obfuscation**, not website-level bot evasion:
+### Hardening
+
+- **Safari-only user agents** — Each new WebView gets a random Safari UA (17.3–18.3 on Sonoma/Sequoia). Safari UAs are chosen because WKWebView's TLS ClientHello fingerprint (JA3/JA4) matches Safari/WebKit — using Chrome or Firefox UAs would create an obvious mismatch detectable by any TLS fingerprinting middlebox.
+- **HTTPS-only** — App Transport Security is enforced. No plaintext HTTP traffic that would expose full URL paths to passive observers.
+- **URL scheme allowlist** — Only `http` and `https` schemes are permitted. `file://`, `javascript:`, and `data:` URLs are rejected at the WebView level before loading.
+- **Blocked domain enforcement** — Checked in all four modules before initiating navigation *and* as a safety net in the WebView's `decidePolicyFor` delegate. Double-layered.
+- **JS injection escaping** — User-provided strings (persona interests, blocked domains) injected into WebView JavaScript are escaped for backticks, `${}` template expressions, null bytes, and `</script>` breakout sequences.
+- **Thread-safe logging** — Activity log writes are serialized through a dedicated `DispatchQueue` to prevent data races when multiple modules run concurrently. Console output is compiled out in release builds (`#if DEBUG`).
+
+## What it doesn't do
 
 - Won't fool Google reCAPTCHA or Amazon's bot detection
-- Won't bypass CAPTCHAs
-- Won't create accounts or log into services
+- Won't bypass CAPTCHAs or create accounts
 - Won't interact with your personal browsing or cookies
+- Won't send any data to any server — traffic is outbound only
 
-The goal is to make your household's aggregate traffic look like 2+ people, not to impersonate a human to individual websites.
+## Known limitations
 
-## Known Limitations
+### TLS fingerprinting
 
-### TLS Fingerprinting
+WKWebView's TLS ClientHello has a known JA3/JA4 fingerprint that matches Safari/WebKit. The app uses Safari-only UAs to keep the TLS-to-UA mapping consistent, but an observer performing active TLS fingerprint analysis (not just passive hostname logging) can identify all WKWebView traffic as coming from the same engine. This is effective against bulk ISP-level profiling; it is not effective against targeted TLS inspection.
 
-The app uses WKWebView (Apple's WebKit engine) for all browsing. WKWebView's TLS ClientHello has a known fingerprint (JA3/JA4) that matches Safari/WebKit. ISPs or network middleboxes that perform TLS fingerprinting can distinguish this traffic from other browsers.
+### DNS visibility
 
-The app uses Safari-only user agents to minimize this mismatch — Safari's TLS fingerprint is the closest match to WKWebView's. This means the traffic is **effective against passive aggregate profiling** (hostname/URL pattern analysis) but **not against active TLS fingerprint analysis**.
+All hostname lookups are standard plaintext DNS visible to your ISP. Even with HTTPS, every hostname the app resolves is exposed. If DNS privacy matters to you, configure system-level DNS-over-HTTPS via [NextDNS](https://nextdns.io), [Cloudflare WARP](https://1.1.1.1), or a macOS DoH profile.
 
-### DNS Visibility
+### Sandbox
 
-All hostname lookups are standard plaintext DNS queries visible to your ISP. Even with HTTPS, the ISP sees every hostname the app resolves. If DNS privacy matters to you, configure system-level DNS-over-HTTPS using a service like [NextDNS](https://nextdns.io), [Cloudflare WARP](https://1.1.1.1), or a macOS DoH configuration profile.
-
-### App Sandbox
-
-The app runs without macOS App Sandbox restrictions (`com.apple.security.app-sandbox = false`). This is required for WKWebView to function correctly with isolated cookie stores and custom configurations. WKWebView's own multi-process architecture provides isolation — web content runs in a separate process from the app. However, this means WebKit vulnerabilities have a larger attack surface than in a sandboxed app.
-
-## Requirements
-
-- macOS 14.0 (Sonoma) or later
-- No external dependencies
+The app runs without macOS App Sandbox (`com.apple.security.app-sandbox = false`). This is required for WKWebView to function with isolated data stores and custom configurations. WKWebView's own multi-process architecture provides process-level isolation for web content, but a WebKit exploit would have a larger attack surface than in a sandboxed app.
 
 ## Installation
 
-### From DMG (Recommended)
+### From DMG (recommended)
+
 1. Download the latest `.dmg` from [Releases](../../releases)
 2. Open the DMG and drag **Digital Roommate** to Applications
 3. Launch from Applications — it appears in the menu bar, not the Dock
 
-### From Source
+### From source
+
 ```bash
 git clone https://github.com/madebysan/digital-roommate.git
 cd digital-roommate
 swift build -c release
-# Binary is at .build/release/DigitalRoommate
+# Binary at .build/release/DigitalRoommate
 ```
 
 ## Usage
 
-### First Launch — Onboarding
+### First launch
 
-On first run, a 5-step onboarding wizard walks you through:
-1. **Welcome** — what the app does and how it works
-2. **Modules** — toggle which traffic types to generate (search, shopping, video, news)
+A 5-step onboarding wizard walks you through setup:
+
+1. **Welcome** — what the app does
+2. **Modules** — toggle which traffic types to generate
 3. **Activity level** — Low / Medium / High with sessions-per-hour estimates
 4. **Persona** — meet your fake roommate
-5. **Summary** — review your choices and start
+5. **Summary** — review and start
 
-The scheduler doesn't start until you click "Get Started." All onboarding controls are VoiceOver-accessible.
+The scheduler doesn't start until you click "Get Started."
 
-### Menu Bar
+### Menu bar
 
-Click the person icon in the menu bar to see:
-- Module status (enabled/disabled, current activity)
+Click the person icon in the menu bar to:
+- See module status and current activity
 - Toggle individual modules on/off
 - Pause/Resume all activity
 - Enable Launch at Login
@@ -107,9 +113,9 @@ Click the person icon in the menu bar to see:
 
 ### Settings
 
-The settings window uses a sidebar layout with 7 sections:
+Sidebar layout with 7 sections:
 
-| Section | What You Configure |
+| Section | What you configure |
 |---------|-------------------|
 | **General** | Activity level, active time blocks, max concurrent browsers, launch at login |
 | **Search** | Search engine toggles (Google, Bing, DuckDuckGo), burst mode, click-through |
@@ -119,98 +125,87 @@ The settings window uses a sidebar layout with 7 sections:
 | **Sites & Privacy** | Visited sites list, blocked domains |
 | **Persona** | Active persona picker, randomize, export, reset, edit interests/topics/categories |
 
-Toggle controls use NSSwitch for on/off settings and NSPopUpButton for numeric options. Changes apply immediately (except Persona, which has a Save button). The layout follows macOS System Settings conventions — sidebar navigation, card-grouped controls, and uppercase section headers.
+### Choose your noise level
 
-### Activity Log
+| Level | Sessions/hour | Character |
+|-------|--------------|-----------|
+| **Low** | ~2–3 | Minimal bandwidth. Quiet roommate. |
+| **Medium** | ~5–8 | Moderate presence. Good starting point. |
+| **High** | ~10–15 | Significant traffic. Heavy browser. |
 
-The app writes a JSON activity log to:
-```
-~/Library/Application Support/DigitalRoommate/activity-log.json
-```
+Timing follows a Poisson distribution — more active in the afternoon and evening, quieter at night, with different patterns on weekends.
 
-Each entry records what module did what and when — useful for verifying the app is generating the traffic you expect.
+### Persona
 
-### Customizing the Persona
+Personas are stored in `~/Library/Application Support/DigitalRoommate/personas/` and define:
 
-Personas are stored in:
-```
-~/Library/Application Support/DigitalRoommate/personas/
-```
-
-You can manage personas from Settings > Persona:
-- **Switch** between multiple saved personas
-- **Randomize** to generate a new persona with random interests
-- **Export** the current persona as a JSON file
-- **Edit** interests, search topics, shopping categories, and video preferences inline
-- **Open** the JSON file directly for advanced editing
-
-Each persona defines:
-- **Search topics** — Categories, query templates, and items to search for
+- **Search topics** — categories, query templates, and items to search for
 - **Shopping categories** — Amazon search terms and product URLs
-- **Video interests** — YouTube channels, search queries, and specific video URLs
-- **News sites** — Homepages to visit with article reading simulation
-- **Active hours** — Weight (0.0–1.0) for each time block controlling activity level
+- **Video interests** — YouTube channels, queries, and specific video URLs
+- **News sites** — homepages to visit with article reading simulation
+- **Active hours** — weight (0.0–1.0) for each time block
+
+Manage from Settings > Persona: switch between personas, randomize, export as JSON, or edit interests inline.
+
+### Activity log
+
+JSON log at `~/Library/Application Support/DigitalRoommate/activity-log.json` — records what module did what and when.
 
 ## Architecture
 
 ```
 Sources/DigitalRoommate/
-├── main.swift                    # App entry point
+├── main.swift                    # Entry point
 ├── AppDelegate.swift             # Lifecycle, App Nap prevention
 ├── Core/
-│   ├── BrowsingEngine.swift      # Offscreen WKWebView pool (max 3)
-│   ├── WebViewInstance.swift      # WKWebView wrapper with URL/scheme validation + async helpers
+│   ├── BrowsingEngine.swift      # Offscreen WKWebView pool
+│   ├── WebViewInstance.swift      # WKWebView wrapper, URL/scheme validation
 │   ├── Scheduler.swift           # Poisson-distributed, time-aware scheduling
 │   ├── ModuleRegistry.swift      # Module lifecycle management
 │   └── BrowsingModule.swift      # Protocol for all modules
 ├── Modules/
-│   ├── SearchNoiseModule.swift   # Google/Bing/DDG search + click-through + JS escaping
-│   ├── ShoppingNoiseModule.swift # Amazon browsing with blocked domain checks
-│   ├── VideoNoiseModule.swift    # YouTube watching with ad skip + watch history (FIFO)
-│   └── NewsModule.swift          # News reading with blocked domain-aware link following
+│   ├── SearchNoiseModule.swift   # Google/Bing/DDG search + click-through
+│   ├── ShoppingNoiseModule.swift # Amazon browsing
+│   ├── VideoNoiseModule.swift    # YouTube watching, ad skip, watch history
+│   └── NewsModule.swift          # News reading, link following
 ├── Persona/
-│   ├── Persona.swift             # Codable persona model + multi-persona storage
+│   ├── Persona.swift             # Codable model + multi-persona storage
 │   ├── PersonaGenerator.swift    # Random persona generation
-│   ├── PersonaSchedule.swift     # Time-based activity decisions
-│   └── QueryGenerator.swift      # Template-based search query generation
+│   ├── PersonaSchedule.swift     # Time-based activity weighting
+│   └── QueryGenerator.swift      # Template-based search queries
 ├── Settings/
-│   ├── AppSettings.swift         # All user-configurable settings (Codable)
-│   └── SettingsManager.swift     # Singleton settings persistence (UserDefaults)
+│   ├── AppSettings.swift         # User-configurable settings (Codable)
+│   └── SettingsManager.swift     # Singleton persistence (UserDefaults)
 ├── UI/
-│   ├── Styles.swift              # Design system tokens, card builders, button helpers
+│   ├── Styles.swift              # Design tokens, card builders
 │   ├── StatusBarController.swift # Menu bar icon and dropdown
-│   ├── SettingsWindowController.swift  # Sidebar settings with accessible controls
-│   ├── OnboardingWindowController.swift # 5-step wizard with step transitions
-│   └── HelpWindowController.swift      # Native AppKit help/about window
+│   ├── SettingsWindowController.swift  # Sidebar settings
+│   ├── OnboardingWindowController.swift # 5-step onboarding
+│   └── HelpWindowController.swift      # About window
 ├── Persistence/
-│   └── StateStore.swift          # JSON state files + thread-safe activity log (debug-only stdout)
+│   └── StateStore.swift          # JSON state + thread-safe activity log
 ├── Testing/
-│   ├── TestRunner.swift          # Test execution framework
+│   ├── TestRunner.swift          # Test framework
 │   ├── TestConfig.swift          # Test configuration
-│   ├── TestPersonas.swift        # Test persona fixtures
-│   └── MockWebViewInstance.swift # WKWebView mock for testing
+│   ├── TestPersonas.swift        # Test fixtures
+│   └── MockWebViewInstance.swift # WKWebView mock
 └── AntiDetection/
-    ├── UserAgentProvider.swift    # Safari-only UA rotation (17.x–18.x)
-    └── StealthScripts.swift      # Navigator + visibility spoofing (no WebGL override)
+    ├── UserAgentProvider.swift    # Safari UA rotation (17.3–18.3)
+    └── StealthScripts.swift      # Navigator + visibility spoofing
 ```
 
-## Privacy & Security
+## Privacy
 
-**Your data stays yours:**
-- All browsing happens in isolated WKWebViews — your personal browser cookies and history are never touched
-- No data is sent to any server — the app only generates outbound web traffic to public websites
-- The activity log stays local on your machine
+- All browsing in isolated WKWebViews — your personal cookies and history are never touched
+- No data sent to any server — outbound web traffic to public sites only
+- Activity log stays local
 - No analytics, telemetry, or phone-home behavior
-- Zero third-party dependencies — built entirely on Apple frameworks
+- Zero third-party dependencies — Apple frameworks only
 
-**Hardened by design:**
-- HTTPS-only — App Transport Security enforced, no plaintext HTTP traffic
-- Activity log output suppressed in release builds to prevent URL leaking via stdout
-- All URLs from persona files validated at load time — rejects `file://`, `javascript:`, `data:` schemes
-- Blocked domains enforced across all four modules and at the WebView level as a safety net
-- Thread-safe logging via serial dispatch queue prevents data races under concurrent module execution
-- JavaScript injection uses hardened escaping (backticks, template literals, null bytes, script breakout)
-- Safari-only user agents match WKWebView's TLS fingerprint — no Chrome/Firefox/Edge mismatch
+## Requirements
+
+- macOS 14.0 (Sonoma) or later
+- No external dependencies
 
 ## License
 
