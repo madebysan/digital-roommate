@@ -8,6 +8,10 @@
 
 ---
 
+<p align="center">
+  <img src="assets/screenshot.png" width="720" alt="Digital Roommate — menu bar dropdown, active persona, and persona JSON">
+</p>
+
 ## Your ISP sees a second person. You stay invisible.
 
 Digital Roommate creates a "pattern of life" for a fictional person who shares your network. Your ISP and data brokers see traffic that looks like another person lives in your house — with different interests, different browsing habits, and a different schedule.
