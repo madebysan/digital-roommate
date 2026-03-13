@@ -209,7 +209,9 @@ Sources/DigitalRoommate/
 ## Requirements
 
 - macOS 14.0 (Sonoma) or later
-- No external dependencies## License
+- No external dependencies
+
+## License
 
 [MIT](LICENSE)
 
